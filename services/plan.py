@@ -91,6 +91,94 @@ IATA_A_CIUDAD: dict[str, str] = {
 
 # Precio promedio por noche (importado de services/hotels para evitar duplicacion)
 
+# Precios de referencia mínimos de vuelo (ida y vuelta) por destino
+# Usados para calcular el presupuesto mínimo sugerido
+PRECIO_VUELO_MINIMO: dict[str, float] = {
+    # Colombia (doméstico/regional)
+    "BOG": 120, "MDE": 120, "CLO": 120, "CTG": 150, "BAQ": 120,
+    "SMR": 120, "EOH": 120, "ADZ": 180,
+    # LATAM
+    "MIA": 220, "CUN": 180, "MEX": 200, "GDL": 200, "LIM": 180,
+    "GYE": 160, "UIO": 160, "SCL": 280, "EZE": 320, "GRU": 280,
+    "SDQ": 220, "HAV": 220, "PTY": 180, "SJO": 200,
+    # USA
+    "JFK": 320, "LAX": 420, "ORD": 320, "MCO": 280, "LAS": 320,
+    "SFO": 420, "BOS": 380, "DCA": 320, "ATL": 280, "SEA": 380,
+    "DEN": 350, "IAH": 280, "DFW": 280,
+    # Europa
+    "MAD": 480, "BCN": 480, "LHR": 520, "CDG": 520, "FCO": 480,
+    "AMS": 520, "FRA": 480, "LIS": 420, "VIE": 480, "ZRH": 580,
+    "MXP": 480, "DUB": 480, "BRU": 480, "BER": 480, "MUC": 500,
+    # Default
+    "_default": 280,
+}
+
+
+def _precio_vuelo_minimo(iata_destino: str) -> float:
+    """Obtiene el precio de vuelo mínimo estimado para un destino."""
+    return PRECIO_VUELO_MINIMO.get(
+        iata_destino.upper(),
+        PRECIO_VUELO_MINIMO["_default"]
+    )
+
+
+def calcular_presupuesto_minimo(
+    origen: str, destino: str, noches: int, pasajeros: int,
+    incluir_hotel: bool = True, incluir_vehiculo: bool = False,
+) -> dict:
+    """
+    Calcula un presupuesto mínimo sugerido basado en precios de referencia.
+    No hace llamadas a APIs externas — solo usa datos estáticos.
+
+    La fórmula base:
+      - Vuelo mínimo: PRECIO_VUELO_MINIMO[destino] * pasajeros
+      - Hotel mínimo: PRECIO_REFERENCIA_HOTEL[destino] * noches * pasajeros
+      - Coche mínimo: PRECIO_REFERENCIA_COCHE[destino] * noches (si aplica)
+      - Margen: 10% sobre el total
+
+    Args:
+        origen: Código IATA de origen
+        destino: Código IATA de destino
+        noches: Número de noches de estadía
+        pasajeros: Número de pasajeros
+        incluir_hotel: Si incluir hotel en el cálculo
+        incluir_vehiculo: Si incluir vehículo en el cálculo
+
+    Returns:
+        Dict con presupuesto_minimo_sugerido y desglose
+    """
+    from services.hotels import PRECIO_REFERENCIA_HOTEL
+
+    vuelo_min = _precio_vuelo_minimo(destino) * pasajeros
+
+    hotel_min = 0
+    if incluir_hotel:
+        precio_noche = PRECIO_REFERENCIA_HOTEL.get(
+            destino.upper(), PRECIO_REFERENCIA_HOTEL["_default"]
+        )
+        hotel_min = precio_noche * noches * pasajeros
+
+    coche_min = 0
+    if incluir_vehiculo:
+        from services.cars import PRECIO_REFERENCIA_COCHE
+        precio_dia = PRECIO_REFERENCIA_COCHE.get(
+            destino.upper(), PRECIO_REFERENCIA_COCHE["_default"]
+        )
+        coche_min = precio_dia * noches
+
+    subtotal = vuelo_min + hotel_min + coche_min
+    total = round(subtotal * 1.1, 2)  # Margen del 10%
+
+    return {
+        "presupuesto_minimo_sugerido": total,
+        "desglose": {
+            "vuelo_minimo": round(vuelo_min, 2),
+            "hotel_minimo": round(hotel_min, 2),
+            "coche_minimo": round(coche_min, 2),
+            "margen": round(total - subtotal, 2),
+        },
+    }
+
 
 # Configuración de tiers para diferentes presupuestos
 # Cada tier tiene filtros específicos para hoteles y airlines
@@ -365,8 +453,22 @@ async def generar_plan(
 
     # Extraer datos de los resultados
     vuelos       = resultado_vuelos.get("vuelos", [])
-    precision    = resultado_vuelos.get("precision", "sin_resultados")
+    vuelo_prec   = resultado_vuelos.get("precision", "sin_resultados")
+    hotel_prec   = resultado_hoteles.get("precision", "exacta") if isinstance(resultado_hoteles, dict) else "exacta"
     aviso_vuelos = resultado_vuelos.get("aviso")
+
+    # Agregar precision combinada: si ambos son exacta → exacta;
+    # si uno es estimada → parcial; si ambos estimada → estimada
+    _prec_order = {"exacta": 0, "mes": 1, "aproximada": 2, "parcial": 3, "stale": 4, "estimada": 5}
+    prec_values = [vuelo_prec, hotel_prec]
+    max_prec = max(prec_values, key=lambda p: _prec_order.get(p, 99))
+    min_prec = min(prec_values, key=lambda p: _prec_order.get(p, 99))
+    if max_prec == min_prec:
+        precision = max_prec
+    elif max_prec == "estimada":
+        precision = "estimada" if min_prec != "exacta" else "parcial"
+    else:
+        precision = max_prec
 
     # Normalizar lista de hoteles (puede venir en diferentes formatos)
     hoteles_lista = resultado_hoteles.get("hoteles", []) if isinstance(resultado_hoteles, dict) else resultado_hoteles or []
@@ -457,6 +559,13 @@ async def generar_plan(
             except Exception:
                 pass
 
+    # Calcular presupuesto mínimo sugerido (sin API calls)
+    presupuesto_minimo = calcular_presupuesto_minimo(
+        origen=origen, destino=destino, noches=noches,
+        pasajeros=pasajeros, incluir_hotel=incluir_hotel,
+        incluir_vehiculo=incluir_vehiculo,
+    )
+
     # Devolver resultado completo
     return {
         "origen":         origen.upper(),
@@ -467,6 +576,7 @@ async def generar_plan(
         "pasajeros":      pasajeros,
         "noches":         noches,
         "presupuesto":    presupuesto,
+        "presupuesto_minimo_sugerido": presupuesto_minimo["presupuesto_minimo_sugerido"],
         "plan_optimo":    plan_optimo,
         "alternativas":   alternativas,
         "hoteles":        hoteles_lista,

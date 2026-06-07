@@ -60,4 +60,9 @@ export async function searchAirports(params) {
   return response.data;
 }
 
+export async function getMinBudget(params) {
+  const response = await api.get('/plan/min-budget/', { params });
+  return response.data;
+}
+
 export default api;

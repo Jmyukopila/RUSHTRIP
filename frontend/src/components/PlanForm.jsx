@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AirportInput from './AirportInput';
+import { getMinBudget } from '../api/client';
 
 const INITIAL = {
   origen: '',
@@ -9,6 +10,8 @@ const INITIAL = {
   presupuesto: '',
   pasajeros: '1',
 };
+
+const DEFAULT_BUDGET = 500;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -39,6 +42,8 @@ export default function PlanForm({ onSubmit, loading, initialData = null }) {
   const [tier, setTier] = useState('estandar');
   const [modoFlexible, setModoFlexible] = useState(false);
   const [duracionDias, setDuracionDias] = useState(7);
+  const [minBudget, setMinBudget] = useState(null);
+  const [minBudgetLoading, setMinBudgetLoading] = useState(false);
 
   // Restore from localStorage or initialData
   useEffect(() => {
@@ -61,6 +66,42 @@ export default function PlanForm({ onSubmit, loading, initialData = null }) {
       // ignore
     }
   }, [initialData]);
+
+  // Fetch minimum suggested budget when entering Step 2
+  useEffect(() => {
+    if (step !== 2) return;
+    if (!form.origen || !form.destino || !form.fecha_salida) return;
+
+    const regreso = modoFlexible
+      ? form.fecha_salida
+      : form.fecha_regreso;
+    if (!regreso) return;
+
+    let cancelled = false;
+    setMinBudgetLoading(true);
+
+    getMinBudget({
+      origen: form.origen,
+      destino: form.destino,
+      fecha_salida: form.fecha_salida,
+      fecha_regreso: regreso,
+      pasajeros: parseInt(form.pasajeros, 10) || 1,
+      incluir_hotel: incluirHotel,
+      incluir_vehiculo: incluirVehiculo,
+    }).then((res) => {
+      if (!cancelled) {
+        setMinBudget(res);
+        setMinBudgetLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setMinBudget(null);
+        setMinBudgetLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [step, form.origen, form.destino, form.fecha_salida, form.fecha_regreso, modoFlexible, incluirHotel, incluirVehiculo, form.pasajeros]);
 
   function validateStep1() {
     const errs = {};
@@ -103,6 +144,11 @@ export default function PlanForm({ onSubmit, loading, initialData = null }) {
     setErrors(errs);
     if (Object.keys(errs).length === 0) {
       setStep(2);
+      // Set default budget if empty
+      setForm((p) => ({
+        ...p,
+        presupuesto: p.presupuesto || String(DEFAULT_BUDGET),
+      }));
       setErrors({});
     }
   }
@@ -309,20 +355,68 @@ export default function PlanForm({ onSubmit, loading, initialData = null }) {
 
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-text mb-1.5">Presupuesto total (USD)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted font-mono">$</span>
+            <label className="block text-sm font-medium text-text mb-2">Presupuesto total (USD)</label>
+
+            {/* Amount display */}
+            <div className="flex items-center justify-center gap-1 mb-4">
+              <span className="text-2xl font-mono text-accent font-bold">
+                ${Number(form.presupuesto || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            </div>
+
+            {/* Range slider */}
+            <div className="px-1">
               <input
-                type="number"
-                name="presupuesto"
-                value={form.presupuesto}
+                type="range"
+                name="presupuesto_slider"
+                min={minBudget?.presupuesto_minimo_sugerido || 100}
+                max={(minBudget?.presupuesto_minimo_sugerido || 1000) * 5}
+                step={50}
+                value={parseInt(form.presupuesto) || (minBudget?.presupuesto_minimo_sugerido || 500)}
                 onChange={(e) => setForm((p) => ({ ...p, presupuesto: e.target.value }))}
-                placeholder="800"
-                min={1}
-                className={`input-field pl-8 ${errors.presupuesto ? 'ring-2 ring-warning/40 border-warning' : ''}`}
                 disabled={loading}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer bg-border accent-accent
+                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5
+                  [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-warm
+                  [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-transform
+                  [&::-webkit-slider-thumb]:hover:scale-125
+                  [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full
+                  [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
               />
             </div>
+
+            {/* Min/Max labels */}
+            <div className="flex justify-between text-xs text-muted mt-1.5">
+              <span>${(minBudget?.presupuesto_minimo_sugerido || 100).toLocaleString('en-US')} mín</span>
+              <span className="text-accent2">←→</span>
+              <span>${((minBudget?.presupuesto_minimo_sugerido || 1000) * 5).toLocaleString('en-US')} máx</span>
+            </div>
+
+            {/* Hidden number input for form validation */}
+            <input
+              type="hidden"
+              name="presupuesto"
+              value={form.presupuesto}
+            />
+
+            {/* Minimum budget suggestion */}
+            {minBudgetLoading ? (
+              <p className="text-xs text-muted mt-2 italic animate-pulse">
+                Calculando presupuesto mínimo...
+              </p>
+            ) : minBudget?.presupuesto_minimo_sugerido ? (
+              <p className="text-xs text-muted mt-2">
+                {Number(form.presupuesto) < minBudget.presupuesto_minimo_sugerido ? (
+                  <span className="text-warning">⚠️ </span>
+                ) : (
+                  <span className="text-success">✓ </span>
+                )}
+                Presupuesto mínimo sugerido: <span className="font-mono font-medium text-text">${minBudget.presupuesto_minimo_sugerido.toLocaleString('en-US')}</span>
+                {Number(form.presupuesto) < minBudget.presupuesto_minimo_sugerido && (
+                  <span className="text-warning"> — Muy bajo para este destino</span>
+                )}
+              </p>
+            ) : null}
             {errors.presupuesto && <p className="mt-1 text-xs text-warning">{errors.presupuesto}</p>}
           </div>
 

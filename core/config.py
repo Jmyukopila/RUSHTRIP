@@ -1,35 +1,54 @@
 # core/config.py
 # Configuración centralizada usando Pydantic Settings
-# Lee variables de entorno desde el archivo .env
+# Soporta múltiples API keys para rotación automática
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
 
 
 class Settings(BaseSettings):
     """
     Configuración de la aplicación extraída del archivo .env.
 
-    Attributes:
-        travelpayouts_token: Token de autenticación para Travelpayouts API
-        travelpayouts_marker: ID de afiliado para tracked links de Travelpayouts
-        rapidapi_key: API key para acceder a RapidAPI (Booking.com)
-        rapidapi_host: Host de RapidAPI para llamadas a Booking.com
-        cors_origins: Lista de orígenes permitidos para CORS (separados por coma)
-        debug: Modo debug para desarrollo
+    Soporta múltiples keys para rotación:
+      TRAVELPAYOUTS_TOKEN_1, TRAVELPAYOUTS_TOKEN_2, ...
+      RAPIDAPI_KEY_1, RAPIDAPI_KEY_2, ...
     """
-    # Tokens para APIs externas
-    travelpayouts_token:  str = ""      # Token para API de vuelos
-    travelpayouts_marker: str = ""     # Marker de afiliado para Travelpayouts
 
-    # RapidAPI (usado para hoteles y coches via Booking.com)
-    rapidapi_key:         str = ""     # API key de RapidAPI
-    rapidapi_host:        str = "booking-com15.p.rapidapi.com"  # Host fijo de RapidAPI
+    travelpayouts_token:  str = ""
+    travelpayouts_marker: str = ""
 
-    # Configuración de servidor
-    cors_origins:         str = "*"    # Orígenes CORS (default: todos)
-    debug:                bool = True  # Modo debug
+    rapidapi_key:         str = ""
+    rapidapi_host:        str = "booking-com15.p.rapidapi.com"
+
+    cors_origins:         str = "*"
+    debug:                bool = True
+
+    @property
+    def travelpayouts_tokens(self) -> List[str]:
+        """Retorna todas las keys de Travelpayouts disponibles."""
+        tokens = []
+        if self.travelpayouts_token:
+            tokens.append(self.travelpayouts_token)
+        for i in range(2, 10):
+            key = getattr(self, f"travelpayouts_token_{i}", None) or \
+                  getattr(self, f"travelpayouts_token_{i}", "")
+            if key:
+                tokens.append(key)
+        return tokens
+
+    @property
+    def rapidapi_keys(self) -> List[str]:
+        """Retorna todas las keys de RapidAPI disponibles."""
+        keys = []
+        if self.rapidapi_key:
+            keys.append(self.rapidapi_key)
+        for i in range(2, 10):
+            key = getattr(self, f"rapidapi_key_{i}", None) or \
+                  getattr(self, f"rapidapi_key_{i}", "")
+            if key:
+                keys.append(key)
+        return keys
 
 
-# Instancia global de configuración
-# Se carga automáticamente desde .env al importar
 settings = Settings()

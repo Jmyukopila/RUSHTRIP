@@ -16,6 +16,14 @@ from core.logging import setup_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from core.http import http_client
+    from core.database_cache import init_db as init_cache_db
+    from core.rate_limiter import init_db as init_rate_limiter_db
+
+    init_cache_db()
+    init_rate_limiter_db()
+    from loguru import logger
+    logger.info("Cache persistente y rate limiter inicializados (SQLite WAL)")
+
     yield
     await http_client.aclose()
 
@@ -102,12 +110,8 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     return response
 
-# ── Rate limiting simple (in-memory) ────────────────────────────────────
-import time as _time
-_rate_limit_store: dict[str, list[float]] = {}
-_RATE_LIMIT_WINDOW = 60
-_RATE_PLAN_LIMIT = 10
-_RATE_SEARCH_LIMIT = 30
+# ── Rate limiting persistente (por IP, sobrevive reinicios) ────────────
+from core.rate_limiter import check_rate_limit, get_remaining
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -116,28 +120,23 @@ async def rate_limit_middleware(request: Request, call_next):
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-    now = _time.time()
-    key = f"{client_ip}:{path}"
 
-    if key not in _rate_limit_store:
-        _rate_limit_store[key] = []
-
-    timestamps = [t for t in _rate_limit_store[key] if now - t < _RATE_LIMIT_WINDOW]
-    _rate_limit_store[key] = timestamps
-
-    limit = _RATE_PLAN_LIMIT if "/plan" in path else _RATE_SEARCH_LIMIT
-    if len(timestamps) >= limit:
+    allowed, remaining = check_rate_limit(client_ip, path)
+    if not allowed:
         return JSONResponse(
             status_code=429,
             content={
                 "error": True,
                 "code": "rate_limit",
-                "detail": "Demasiadas solicitudes. Espera un momento e intenta de nuevo.",
+                "detail": "Has alcanzado el límite diario de consultas. Vuelve mañana o intenta con rutas menos específicas.",
             },
         )
 
-    timestamps.append(now)
-    return await call_next(request)
+    response = await call_next(request)
+    remaining, limit = get_remaining(client_ip, path)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    return response
 
 # ── Inicializar logging ─────────────────────────────────────────────────
 setup_logging()

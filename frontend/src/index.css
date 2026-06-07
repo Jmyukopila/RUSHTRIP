@@ -156,6 +156,84 @@ body::after {
   animation: flyPlane 2s ease-in-out infinite;
 }
 
+/* Image reveal for hotel gallery */
+@keyframes imageReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-imageReveal {
+  animation: imageReveal 0.3s ease-out forwards;
+}
+
+/* Gallery slide transition */
+@keyframes slideGallery {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Lightbox overlay */
+@keyframes lightboxFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-lightboxFade {
+  animation: lightboxFade 0.25s ease-out forwards;
+}
+
+/* Flight route draw animation */
+@keyframes drawRoute {
+  0% {
+    stroke-dashoffset: 1000;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Pulse animation on new data */
+@keyframes pulseCard {
+  0%, 100% {
+    box-shadow: 0 2px 12px rgba(232, 97, 26, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(232, 97, 26, 0.15);
+  }
+}
+
+.animate-pulseCard {
+  animation: pulseCard 1.5s ease-in-out 1;
+}
+
+/* Shimmer placeholder for images */
+.image-placeholder {
+  background: linear-gradient(
+    90deg,
+    var(--card) 25%,
+    #FFF4E8 50%,
+    var(--card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
 @layer components {
   .card-shadow {
     box-shadow: 0 2px 12px rgba(232, 97, 26, 0.08);

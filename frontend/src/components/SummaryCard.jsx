@@ -99,6 +99,22 @@ export default function SummaryCard({ data, onModify }) {
         </p>
       </div>
 
+      {/* Minimum budget hint */}
+      {data.presupuesto_minimo_sugerido && (
+        <div className="mt-3 text-xs text-muted flex items-center gap-2">
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4M12 8h.01" />
+          </svg>
+          <span>
+            Presupuesto mínimo sugerido: <span className="font-mono text-text">${Number(data.presupuesto_minimo_sugerido).toLocaleString('en-US')}</span>
+            {data.presupuesto < data.presupuesto_minimo_sugerido && (
+              <span className="text-warning"> — Por debajo del mínimo estimado</span>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Quick stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-border">
         <div className="text-center">

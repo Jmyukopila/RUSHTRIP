@@ -120,16 +120,18 @@ function PlanCard({ plan, label, variant, delay = 0 }) {
                   ? 'bg-accent/5 border-accent/20'
                   : 'bg-card border-border'
               }`}>
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-4">
                   {(plan.hotel.foto_url && !hotelImgError) ? (
-                    <img
-                      src={plan.hotel.foto_url}
-                      alt={plan.hotel.nombre}
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                      onError={() => setHotelImgError(true)}
-                    />
+                    <div className="relative w-24 h-16 sm:w-32 sm:h-20 rounded-lg overflow-hidden bg-accent/5 flex-shrink-0">
+                      <img
+                        src={plan.hotel.foto_url}
+                        alt={plan.hotel.nombre}
+                        className="w-full h-full object-cover"
+                        onError={() => setHotelImgError(true)}
+                      />
+                    </div>
                   ) : (
-                    <div className="w-16 h-16 rounded-lg bg-accent2/10 text-accent2 flex items-center justify-center flex-shrink-0">
+                    <div className="w-24 h-16 sm:w-32 sm:h-20 rounded-lg bg-accent2/10 text-accent2 flex items-center justify-center flex-shrink-0">
                       <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <path d="M3 21 L21 21" />
                         <path d="M5 21 L5 7 L12 3 L19 7 L19 21" />
@@ -153,11 +155,11 @@ function PlanCard({ plan, label, variant, delay = 0 }) {
                         </span>
                       )}
                       {plan.hotel.rating > 0 && (
-                        <span className="text-xs text-muted">{Number(plan.hotel.rating).toFixed(1)}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-success/15 text-success text-xs font-bold">{Number(plan.hotel.rating).toFixed(1)}</span>
                       )}
                     </div>
                     <p className="text-xs text-muted mt-1">
-                      {formatMoney(plan.hotel.precio_noche)} por noche
+                      <span className="font-mono text-accent font-medium">{formatMoney(plan.hotel.precio_noche)}</span> por noche
                       {plan.hotel.noches ? ` × ${plan.hotel.noches} noche${plan.hotel.noches > 1 ? 's' : ''}` : ''}
                       {plan.hotel.precio_total ? ` = ${formatMoney(plan.hotel.precio_total)}` : ''}
                     </p>
@@ -338,8 +340,37 @@ function sortHotels(hoteles, sortBy) {
   }
 }
 
+function HotelSearch({ value, onChange, total }) {
+  return (
+    <div className="relative">
+      <svg viewBox="0 0 24 24" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="8" />
+        <path d="M21 21L16.65 16.65" />
+      </svg>
+      <input
+        type="text"
+        placeholder={`Buscar hotel por nombre (${total} disponible${total !== 1 ? 's' : ''})...`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full pl-9 pr-4 py-2.5 bg-white border border-border rounded-lg text-sm text-text placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition-all"
+      />
+      {value && (
+        <button
+          onClick={() => onChange('')}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function PlanResult({ data, loading, error, onRetry, onModify }) {
   const [hotelSort, setHotelSort] = useState('recomendado');
+  const [hotelSearch, setHotelSearch] = useState('');
 
   if (loading) return null;
   if (error) {
@@ -367,7 +398,13 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
   if (!data) return null;
 
   const { aviso, precision, plan_optimo, alternativas, hoteles, coches, aeropuertos_alternativos } = data;
-  const sortedHoteles = sortHotels(hoteles || [], hotelSort);
+
+  // Filter hotels by search term (local, no API call)
+  const hotelesFiltrados = (hoteles || []).filter((h) => {
+    if (!hotelSearch) return true;
+    return h.nombre?.toLowerCase().includes(hotelSearch.toLowerCase());
+  });
+  const sortedHoteles = sortHotels(hotelesFiltrados, hotelSort);
 
   return (
     <div className="space-y-6">
@@ -466,14 +503,24 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
               <p className="text-sm text-muted">Otras opciones disponibles para tus fechas</p>
             </div>
           </div>
-          <HotelSort value={hotelSort} onChange={setHotelSort} />
-          <div className="grid grid-cols-1 gap-4">
-            {sortedHoteles.map((h, i) => (
-              <div key={`${h.id || i}`} style={{ animation: `fadeSlideUp 0.4s ease-out ${1000 + i * 80}ms forwards`, opacity: 0 }}>
-                <HotelCard hotel={h} />
-              </div>
-            ))}
+          <div className="space-y-3 mb-4">
+            <HotelSearch value={hotelSearch} onChange={setHotelSearch} total={hoteles.length} />
+            <HotelSort value={hotelSort} onChange={setHotelSort} />
           </div>
+          {sortedHoteles.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {sortedHoteles.map((h, i) => (
+                <div key={`${h.id || i}`} style={{ animation: `fadeSlideUp 0.4s ease-out ${1000 + i * 80}ms forwards`, opacity: 0 }}>
+                  <HotelCard hotel={h} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-card rounded-lg border border-border">
+              <p className="text-sm text-muted">No se encontraron hoteles que coincidan con "{hotelSearch}"</p>
+              <button onClick={() => setHotelSearch('')} className="btn-outline text-xs mt-3">Limpiar filtro</button>
+            </div>
+          )}
         </div>
       )}
 

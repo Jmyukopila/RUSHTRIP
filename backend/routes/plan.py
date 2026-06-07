@@ -4,7 +4,8 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from services.plan import generar_plan, resolver_iata
+from services.plan import generar_plan, resolver_iata, calcular_presupuesto_minimo
+from services.hotels import _calcular_noches
 from datetime import datetime
 import re
 
@@ -196,6 +197,52 @@ async def crear_plan(body: PlanRequest):
         tier=             body.tier,
         modo=             body.modo,
         duracion_dias=    body.duracion_dias,
+    )
+
+    return resultado
+
+
+@router.get(
+    "/min-budget/",
+    summary="Calcular presupuesto mínimo sugerido",
+    description="""
+    Calcula un presupuesto mínimo sugerido usando precios de referencia.
+    No hace llamadas a APIs externas — solo usa datos estáticos.
+
+    Args:
+        origen: Código IATA o ciudad de origen
+        destino: Código IATA o ciudad de destino
+        fecha_salida: Fecha de salida (YYYY-MM-DD)
+        fecha_regreso: Fecha de regreso (YYYY-MM-DD)
+        pasajeros: Número de pasajeros (default: 1)
+        incluir_hotel: Incluir hotel (default: true)
+        incluir_vehiculo: Incluir vehículo (default: false)
+    """,
+)
+async def min_budget(
+    origen: str,
+    destino: str,
+    fecha_salida: str,
+    fecha_regreso: str,
+    pasajeros: int = 1,
+    incluir_hotel: bool = True,
+    incluir_vehiculo: bool = False,
+):
+    try:
+        origen_iata = await resolver_iata(origen)
+        destino_iata = await resolver_iata(destino)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    noches = _calcular_noches(fecha_salida, fecha_regreso)
+
+    resultado = calcular_presupuesto_minimo(
+        origen=origen_iata,
+        destino=destino_iata,
+        noches=noches,
+        pasajeros=pasajeros,
+        incluir_hotel=incluir_hotel,
+        incluir_vehiculo=incluir_vehiculo,
     )
 
     return resultado

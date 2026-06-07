@@ -9,11 +9,16 @@ const NAV_LINKS = [
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 10);
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight > 0) {
+        setScrollProgress(Math.min((window.scrollY / docHeight) * 100, 100));
+      }
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -21,6 +26,14 @@ export default function Navbar() {
 
   return (
     <>
+      {/* Scroll progress bar */}
+      <div className="fixed top-0 left-0 right-0 z-[60] h-0.5">
+        <div
+          className="h-full bg-accent transition-all duration-150 ease-out"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
       <nav
         className={`fixed top-0 left-0 right-0 z-50 bg-bg/90 backdrop-blur-sm border-b border-border transition-all duration-300 ${
           scrolled ? 'shadow-warm h-14 sm:h-16' : 'h-16 sm:h-20'

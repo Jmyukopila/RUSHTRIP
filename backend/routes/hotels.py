@@ -37,6 +37,7 @@ async def search_hotels(
     checkin: str,
     checkout: str,
     adultos: int = 2,
+    q: str = "",
 ):
     """
     Endpoint para buscar hoteles en una ciudad específica.
@@ -46,6 +47,7 @@ async def search_hotels(
         checkin: Fecha de entrada (YYYY-MM-DD)
         checkout: Fecha de salida (YYYY-MM-DD)
         adultos: Número de adultos (default: 2)
+        q: Filtro opcional por nombre de hotel (case-insensitive)
 
     Returns:
         Dict con 'aviso', 'ciudad' y 'hoteles' (lista)
@@ -70,5 +72,5 @@ async def search_hotels(
         )
 
     # Delegar al servicio de hotels
-    resultado = await buscar_hoteles(ciudad, checkin, checkout, adultos)
+    resultado = await buscar_hoteles(ciudad, checkin, checkout, adultos, q=q)
     return resultado

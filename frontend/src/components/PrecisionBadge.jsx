@@ -11,6 +11,18 @@ const BADGE_CONFIG = {
     label: 'Precios aproximados',
     className: 'bg-accent/15 text-accent border border-accent/20',
   },
+  estimada: {
+    label: 'Precios estimados',
+    className: 'bg-error/15 text-error border border-error/20',
+  },
+  parcial: {
+    label: 'Precios parcialmente estimados',
+    className: 'bg-warning/15 text-warning border border-warning/20',
+  },
+  stale: {
+    label: 'Datos de cache',
+    className: 'bg-accent/15 text-accent border border-accent/20',
+  },
 };
 
 export default function PrecisionBadge({ precision }) {
