@@ -290,7 +290,7 @@ export default function HotelCard({ hotel, variant = 'default' }) {
                   rel="noopener noreferrer"
                   className="btn-outline text-xs py-1.5 px-3 whitespace-nowrap"
                 >
-                  Booking
+                  {hotel.tipo === 'real' ? 'Hotels.nl' : 'Booking'}
                 </a>
               )}
             </div>

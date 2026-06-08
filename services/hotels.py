@@ -1,6 +1,6 @@
 # services/hotels.py
-# Servicio de búsqueda de hoteles con fallback multiple
-# Travelpayouts → KKday/Klook → Booking.com deep links → datos estimados
+# Servicio de busqueda de hoteles con fallback multiple
+# Hotels.nl API (datos reales) → Travelpayouts → fallback estimados
 
 import logging
 import re
@@ -9,6 +9,7 @@ from core.config import settings
 from core.http import http_client
 from core.database_cache import cache_get, cache_get_stale, cache_set
 from core.cache import TTLCache
+from services.hotels_nl import buscar_hoteles as buscar_hoteles_nl
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,14 @@ def _calcular_noches(checkin: str, checkout: str) -> int:
 def _precio_referencia(ciudad: str) -> float:
     """Obtiene el precio de referencia por noche para una ciudad."""
     return PRECIO_REFERENCIA_HOTEL.get(ciudad.upper(), PRECIO_REFERENCIA_HOTEL["_default"])
+
+
+def _link_hotelsnl(hotel: dict, checkin: str, checkout: str, adultos: int) -> str:
+    """Genera link de reserva a Hotels.nl."""
+    nombre = hotel.get("nombre", "")
+    ciudad = hotel.get("ciudad", "")
+    q = f"{nombre} {ciudad}".replace(" ", "+")
+    return f"https://hotels.nl/search?q={q}&checkin={checkin}&checkout={checkout}&persons={adultos}"
 
 
 def _slug_hotel(nombre: str) -> str:
@@ -264,19 +273,39 @@ async def buscar_hoteles(
             "hoteles": hoteles,
         }
 
-    # Nivel 1: Travelpayouts autocomplete + precios de referencia + links afiliados
-    logger.info(f"Buscando hoteles para '{ciudad}' via Travelpayouts + afiliados")
-    city_info = await _buscar_ciudad(ciudad)
-    nombre_ciudad = city_info["nombre"] if city_info else ciudad
-    codigo = city_info["codigo"] if city_info else ""
-    pais = city_info["pais"] if city_info else ""
+    nombre_ciudad = ciudad
+    hoteles = None
 
-    noches = _calcular_noches(checkin, checkout)
-    precio_noche = _precio_referencia(codigo) if codigo else _precio_referencia(ciudad)
+    # Nivel 1: Hotels.nl API (datos reales + comisiones)
+    if settings.hotelsnl_api_key:
+        logger.info(f"Buscando hoteles para '{ciudad}' via Hotels.nl API")
+        hoteles_nl = await buscar_hoteles_nl(
+            location=ciudad,
+            checkin=checkin,
+            checkout=checkout,
+            persons=adultos,
+            currency="USD",
+        )
+        if hoteles_nl is not None:
+            hoteles = hoteles_nl
+            if hoteles:
+                nombre_ciudad = hoteles[0].get("ciudad", ciudad)
+            # Asignar link de reserva a Hotels.nl
+            for h in hoteles:
+                h["link_reserva"] = _link_hotelsnl(h, checkin, checkout, adultos)
 
-    hoteles = _generar_hoteles_afiliados(
-        nombre_ciudad, codigo, pais, checkin, checkout, adultos, noches, precio_noche
-    )
+    # Nivel 2: Fallback a Travelpayouts + precios de referencia
+    if hoteles is None:
+        logger.info(f"Buscando hoteles para '{ciudad}' via Travelpayouts + afiliados")
+        city_info = await _buscar_ciudad(ciudad)
+        nombre_ciudad = city_info["nombre"] if city_info else ciudad
+        codigo = city_info["codigo"] if city_info else ""
+        pais = city_info["pais"] if city_info else ""
+        noches = _calcular_noches(checkin, checkout)
+        precio_noche = _precio_referencia(codigo) if codigo else _precio_referencia(ciudad)
+        hoteles = _generar_hoteles_afiliados(
+            nombre_ciudad, codigo, pais, checkin, checkout, adultos, noches, precio_noche
+        )
 
     hoteles = await _enriquecer_con_fotos(nombre_ciudad, hoteles)
 
@@ -292,12 +321,14 @@ async def buscar_hoteles(
         q_lower = q.lower()
         hoteles_filtrados = [h for h in hoteles_filtrados if q_lower in h.get("nombre", "").lower()]
 
+    es_real = any(h.get("tipo") == "real" for h in hoteles_filtrados)
     resultado = {
-        "aviso": "Mostrando precios de referencia. Los precios reales pueden variar. Reserva directa via KKday, Klook o Booking.",
+        "aviso": "Precios reales de Hotels.nl. Al reservar generas comision." if es_real
+                  else "Mostrando precios de referencia. Los precios reales pueden variar.",
         "ciudad": nombre_ciudad,
         "hoteles": hoteles_filtrados,
-        "precision": "estimada",
+        "precision": "real" if es_real else "estimada",
     }
 
-    cache_set(cache_key, resultado, provider="travelpayouts", ttl_seconds=_CACHE_TTL)
+    cache_set(cache_key, resultado, provider="hotelsnl" if es_real else "travelpayouts", ttl_seconds=_CACHE_TTL)
     return resultado

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     pexels_api_key:       str = ""
 
+    hotelsnl_api_key:     str = ""
+
     cors_origins:         str = "*"
     debug:                bool = True
 
