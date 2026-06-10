@@ -54,13 +54,14 @@ LIMITS: dict[str, int] = {
     "hotels": 100,
     "cars": 100,
     "airports": 100,
+    "weather": 100,
     "default": 200,
 }
 
 
 def _endpoint_group(path: str) -> str:
     """Agrupa rutas en categorías de límite."""
-    for prefix in ("/plan", "/flights", "/hotels", "/cars", "/airports"):
+    for prefix in ("/plan", "/flights", "/hotels", "/cars", "/airports", "/weather"):
         if path.startswith(prefix):
             return prefix.lstrip("/")
     return "default"

@@ -23,6 +23,7 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 - **Búsqueda de vuelos** — Consulta precios en Travelpayouts con fallback inteligente: si no hay vuelos en la fecha exacta, busca en todo el mes, y si tampoco, muestra los próximos disponibles. Compara conexiones, directos y distintas aerolíneas.
 - **Hoteles con fotos y precios reales** — Via Hotels.nl API (datos reales con fotos, precios, ratings). Fallback a precios estimados por destino si no hay API key configurada. Las fotos se complementan con Pexels.
 - **Alquiler de coches** — Via RapidAPI con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
+- **Clima del destino** — Pronóstico real día a día para los días exactos del viaje (Open-Meteo, sin API key). Para fechas a más de 16 días muestra el clima típico calculado con datos históricos reales de años anteriores.
 - **Comparativa por tiers** — Al ver los resultados, podés comparar opciones Económico, Estándar y Premium para elegir según tu presupuesto.
 - **Frontend responsive** — Interfaz moderna hecha en React + Tailwind con cards, badges, diseño limpio y animaciones suaves.
 
@@ -38,6 +39,7 @@ RUSHTRIP/
 │       ├── cars.py        # GET /cars/?ciudad=...
 │       ├── flights.py     # GET /flights/?origen=...&destino=...
 │       ├── hotels.py      # GET /hotels/?ciudad=...&checkin=...&checkout=...
+│       ├── weather.py     # GET /weather/?ciudad=...&fecha_inicio=...&fecha_fin=...
 │       └── plan.py        # POST /plan/  ← endpoint principal (acepta nombres de ciudad)
 ├── core/
 │   ├── config.py          # Settings con variables de entorno
@@ -51,6 +53,7 @@ RUSHTRIP/
 │   ├── hotels_nl.py       # Integración con Hotels.nl API (datos reales)
 │   ├── cars.py            # Coches: RapidAPI → precios estimados (fallback)
 │   ├── airports.py        # Autocomplete de aeropuertos + aeropuertos alternativos
+│   ├── weather.py         # Clima: pronóstico Open-Meteo → clima típico histórico (fallback)
 │   └── plan.py            # Generador de plan de viaje + resolver_iata()
 ├── frontend/
 │   └── src/
@@ -259,6 +262,14 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
   "aeropuertos_alternativos": [
     { "codigo": "BCN", "nombre": "Barcelona-El Prat", "distancia_km": 505 }
   ],
+  "clima": {
+    "ciudad": "Madrid",
+    "dias": [
+      { "fecha": "2026-12-15", "temp_max": 12.3, "temp_min": 3.1, "prob_lluvia": 33, "descripcion": "Parcialmente nublado", "icono": "⛅", "tipo": "tipico" }
+    ],
+    "precision": "tipico",
+    "aviso": "Fechas lejanas: mostramos el clima típico de esos días según años anteriores."
+  },
   "aviso": null,
   "precision": "exacta"
 }
@@ -437,6 +448,47 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 
 ---
 
+### `GET /weather/` — Clima del destino
+
+`GET /weather/?ciudad=Madrid&fecha_inicio=2026-06-20&fecha_fin=2026-06-28`
+
+**Parámetros:**
+
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `ciudad` | string | Nombre de la ciudad (ej: `Madrid`, `Bogotá`) |
+| `fecha_inicio` | string | Primer día `YYYY-MM-DD` |
+| `fecha_fin` | string | Último día `YYYY-MM-DD` (rango máximo: 31 días) |
+
+**Response (200):**
+```json
+{
+  "ciudad": "Madrid",
+  "lat": 40.4165,
+  "lon": -3.70256,
+  "fecha_inicio": "2026-06-20",
+  "fecha_fin": "2026-06-28",
+  "dias": [
+    {
+      "fecha": "2026-06-20",
+      "temp_max": 33.1,
+      "temp_min": 19.4,
+      "prob_lluvia": 5,
+      "codigo": 1,
+      "descripcion": "Mayormente despejado",
+      "icono": "🌤️",
+      "tipo": "pronostico"
+    }
+  ],
+  "precision": "parcial",
+  "aviso": "Los días posteriores al 24/06 muestran el clima típico de años anteriores."
+}
+```
+
+> **Nota:** Usa Open-Meteo — **no requiere API key**. Si las fechas están dentro del horizonte de pronóstico (~16 días) devuelve pronóstico real (`precision: "pronostico"`); para fechas más lejanas devuelve el clima típico de esos días promediando los últimos 3 años de datos históricos reales (`precision: "tipico"`); si el viaje cruza el límite, mezcla ambos (`precision: "parcial"`). Si no hay datos devuelve `dias: []` con `precision: "sin_datos"`. El mismo objeto viene embebido en el campo `clima` de la respuesta de `POST /plan/`.
+
+---
+
 ### `GET /min-budget/` — Presupuesto mínimo sugerido
 
 `GET /plan/min-budget/?origen=Bogotá&destino=Madrid&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1&incluir_hotel=true&incluir_vehiculo=false`
@@ -501,6 +553,7 @@ La API aplica límites diarios por IP (persisten en SQLite, sobreviven reinicios
 | `GET /hotels/` | 100 requests |
 | `GET /cars/` | 100 requests |
 | `GET /airports/` | 100 requests |
+| `GET /weather/` | 100 requests |
 | Otros | 200 requests |
 
 Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. Los endpoints `/health`, `/`, `/docs` y `/openapi.json` no están limitados.
@@ -526,6 +579,7 @@ Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. L
 | Coches | RapidAPI | Precios estimados por destino |
 | Fotos hoteles | Pexels API | Placehold.co |
 | Resolución ciudad → IATA | Travelpayouts autocomplete | Cache local |
+| Clima | Open-Meteo pronóstico (≤16 días) | Clima típico histórico (3 años) → cache stale |
 
 ---
 

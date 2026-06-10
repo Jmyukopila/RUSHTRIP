@@ -5,6 +5,7 @@ import PrecisionBadge from './PrecisionBadge';
 import FlightCard from './FlightCard';
 import HotelCard from './HotelCard';
 import CarCard from './CarCard';
+import WeatherSection from './WeatherSection';
 import { AFFILIATE_LINKS } from '../constants';
 
 function formatMoney(n) {
@@ -333,7 +334,7 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
   }
   if (!data) return null;
 
-  const { aviso, precision, plan_optimo, alternativas, hoteles, coches, aeropuertos_alternativos } = data;
+  const { aviso, precision, plan_optimo, alternativas, hoteles, coches, aeropuertos_alternativos, clima } = data;
 
   const hotelesFiltrados = (hoteles || []).filter((h) => {
     if (!hotelSearch) return true;
@@ -363,6 +364,8 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
       </div>
 
       {plan_optimo && <PlanCard plan={plan_optimo} variant="optimo" delay={100} />}
+
+      <WeatherSection clima={clima} delay={300} />
 
       {aeropuertos_alternativos?.length > 0 && (
         <div className="animate-fade-slide-up" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>

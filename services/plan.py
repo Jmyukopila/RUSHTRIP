@@ -497,6 +497,7 @@ async def generar_plan(
             "coches":         resultado_coches,
             "aviso":          aviso_vuelos or "No se encontraron vuelos para esta ruta.",
             "precision":      precision,
+            "clima":          None,
         }
 
     # 4. Calcular plan para cada vuelo disponible
@@ -566,6 +567,14 @@ async def generar_plan(
         incluir_vehiculo=incluir_vehiculo,
     )
 
+    # 8. Clima del destino para los días del viaje (no bloquea el plan si falla)
+    clima = None
+    try:
+        from services.weather import obtener_clima
+        clima = await obtener_clima(ciudad_destino, fecha_salida, fecha_regreso, iata=destino)
+    except Exception as e:
+        logger.warning(f"No se pudo obtener clima para {ciudad_destino}: {e}")
+
     # Devolver resultado completo
     return {
         "origen":         origen.upper(),
@@ -584,4 +593,5 @@ async def generar_plan(
         "aviso":          aviso,
         "precision":      precision,
         "aeropuertos_alternativos": alternativas_aeropuerto,
+        "clima":          clima,
     }
