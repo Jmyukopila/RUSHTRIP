@@ -8,10 +8,11 @@ Este directorio contiene la lógica de negocio de RushTrip, organizando los serv
 services/
 ├── __init__.py     # Paquete
 ├── airports.py     # Búsqueda de aeropuertos/ciudades + aeropuertos alternativos
-├── cars.py        # Alquiler de coches
-├── flights.py     # Búsqueda de vuelos
-├── hotels.py      # Búsqueda de hoteles
-└── plan.py        # Generación de planes de viaje + resolución de ciudades
+├── cars.py         # Alquiler de coches
+├── flights.py      # Búsqueda de vuelos
+├── hotels.py       # Búsqueda de hoteles (Hotels.nl API → fallback estimado)
+├── hotels_nl.py    # Integración con Hotels.nl API (datos reales + comisiones)
+└── plan.py         # Generación de planes de viaje + resolución de ciudades
 ```
 
 ## Descripción de Módulos
@@ -67,19 +68,34 @@ Busca vuelos usando Travelpayouts API con estrategia de fallback en 3 niveles.
 ---
 
 ### hotels.py
-Busca hoteles con fallback doble: RapidAPI → Travelpayouts → estimado.
+Busca hoteles con fallback doble: Hotels.nl API → precios estimados.
 
 **Función principal:**
-- `buscar_hoteles(ciudad, checkin, checkout, adultos, estrellas_min, estrellas_max)` → Devuelve lista de hoteles
+- `buscar_hoteles(ciudad, checkin, checkout, adultos, estrellas_min, estrellas_max, q)` → Devuelve lista de hoteles
 
 **Fuentes de datos:**
-1. **Primary:** RapidAPI/Booking.com (datos reales)
-2. **Fallback 1:** Travelpayouts (hotel estimado)
-3. **Fallback 2:** Respuesta vacía
+1. **Primary:** Hotels.nl API (datos reales con fotos, precios, ratings, amenities) — requiere `HOTELSNL_API_KEY`
+2. **Fallback:** Precios estimados por destino usando tabla de precios de referencia
 
-**Funciones auxiliares:**
-- `_calcular_noches(checkin, checkout)` → Calcula noches
-- `_precio_referencia(ciudad)` → Precio promedio por noche
+**Características:**
+- Enriquecimiento de fotos vía Pexels API en todos los niveles
+- Cache persistente SQLite (24h)
+- Links de afiliado a Hotels.nl/Booking.com según fuente
+- Filtro por estrellas y búsqueda por nombre (`q`)
+
+### hotels_nl.py
+Integración con la API REST de Hotels.nl para búsqueda de hoteles reales.
+
+**Docs:** https://hotels.nl/api/
+
+**Función principal:**
+- `buscar_hoteles(location, checkin, checkout, currency, persons, language)` → Lista de hoteles normalizados
+
+**Rate limits (free tier):** 200 requests/día, 5 requests/minuto por IP
+
+**Endpoint usado:** `POST /api/search.php` con geocoding automático de ubicación
+
+**Booking:** Usa `/api/booking.php` con `hotelsnl_hash` para iniciar reserva con un clic (requiere cuenta verificada).
 
 ---
 

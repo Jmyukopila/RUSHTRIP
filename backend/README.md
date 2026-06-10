@@ -86,7 +86,7 @@ Busca vuelos entre dos aeropuertos (requiere códigos IATA).
 ---
 
 ### GET /hotels
-Busca hoteles en una ciudad.
+Busca hoteles en una ciudad con datos reales o estimados.
 
 **Query Parameters:**
 | Parámetro | Tipo | Requerido | Descripción |
@@ -96,21 +96,57 @@ Busca hoteles en una ciudad.
 | `checkout` | string | Sí | Formato YYYY-MM-DD |
 | `adultos` | int | No | Default: 2 |
 
-**Response:**
+**Fuente de datos:**
+- **Si `HOTELSNL_API_KEY` configurada:** Hoteles reales con fotos, precios, ratings, amenities vía Hotels.nl API
+- **Sin API key:** Hoteles estimados con precios de referencia por destino
+
+**Response (`tipo: "real"` — con Hotels.nl API):**
 ```json
 {
-  "aviso": null,
+  "aviso": "Precios reales de Hotels.nl. Al reservar generas comision.",
+  "ciudad": "Bogota",
+  "hoteles": [
+    {
+      "nombre": "Hotel Port",
+      "estrellas": 3,
+      "rating": 7.0,
+      "reviewScoreWord": "Bien",
+      "reviewCount": 150,
+      "foto_url": "https://cdn.worldota.net/...",
+      "fotos_urls": ["https://cdn.worldota.net/..."],
+      "precio_noche": 166.33,
+      "precio_total": 499.00,
+      "noches": 3,
+      "adultos": 2,
+      "moneda": "EUR",
+      "link_reserva": "https://hotels.nl/search?q=...",
+      "hotelsnl_hash": "1584-a0b2c3...",
+      "amenities": ["24-hour reception", "Free Wi-Fi"],
+      "descripcion": "Hotel Port is located in Rotterdam...",
+      "tipo": "real"
+    }
+  ],
+  "precision": "real"
+}
+```
+
+**Response (`tipo: "estimado"` — fallback sin API key):**
+```json
+{
+  "aviso": "Mostrando precios de referencia...",
   "ciudad": "Miami",
   "hoteles": [
     {
-      "nombre": "Hotel Miami Beach",
-      "estrellas": 4,
-      "rating": 8.5,
-      "precio_noche": 120.00,
-      "precio_total": 840.00,
-      "link_reserva": "https://www.booking.com/..."
+      "nombre": "Hotel Céntrico en Miami",
+      "estrellas": 3,
+      "rating": 7.5,
+      "precio_noche": 108.00,
+      "precio_total": 756.00,
+      "link_reserva": "https://www.booking.com/searchresults.html?ss=...",
+      "tipo": "estimado"
     }
-  ]
+  ],
+  "precision": "estimada"
 }
 ```
 

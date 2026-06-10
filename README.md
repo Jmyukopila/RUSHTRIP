@@ -10,9 +10,9 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 
 | Capa | Tecnología |
 |------|-----------|
-| Backend | Python 3.12+, FastAPI, Uvicorn |
+| Backend | Python 3.11+, FastAPI, Uvicorn |
 | Frontend | React 18, Vite, Tailwind CSS |
-| APIs externas | Travelpayouts (Aviasales), RapidAPI (Booking.com), Booking.com |
+| APIs externas | Travelpayouts (Aviasales), Hotels.nl, Pexels, Booking.com (afiliados) |
 
 ---
 
@@ -21,8 +21,8 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 - **Plan por presupuesto** — Escribís el nombre de las ciudades (ej: "Bogotá", "Madrid"), las fechas y tu presupuesto. RushTrip resuelve automáticamente los aeropuertos, busca vuelos, los combina con hoteles reales y te dice cuál es la mejor opción.
 - **Resolución automática de aeropuertos** — No necesitás saber códigos IATA. Escribís "Bogotá" y el sistema lo convierte a "BOG" automáticamente. También funciona con códigos IATA si los conocés.
 - **Búsqueda de vuelos** — Consulta precios en Travelpayouts con fallback inteligente: si no hay vuelos en la fecha exacta, busca en todo el mes, y si tampoco, muestra los próximos disponibles. Compara conexiones, directos y distintas aerolíneas.
-- **Hoteles con fotos y precios reales** — Via RapidAPI (Booking.com). Si la API no responde, cae a Travelpayouts con precio estimado.
-- **Alquiler de coches** — Via RapidAPI (Booking.com) con fallback a precios estimados por destino.
+- **Hoteles con fotos y precios reales** — Via Hotels.nl API (datos reales con fotos, precios, ratings). Fallback a precios estimados por destino si no hay API key configurada. Las fotos se complementan con Pexels.
+- **Alquiler de coches** — Via RapidAPI (Booking.com) con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
 - **Comparativa por tiers** — Al ver los resultados, podés comparar opciones Económico, Estándar y Premium para elegir según tu presupuesto.
 - **Frontend responsive** — Interfaz moderna hecha en React + Tailwind con cards, badges, diseño limpio y animaciones suaves.
 
@@ -47,7 +47,8 @@ RUSHTRIP/
 │   └── logging.py         # Configuración de Loguru
 ├── services/
 │   ├── flights.py         # Búsqueda de vuelos (Travelpayouts)
-│   ├── hotels.py          # Hoteles: RapidAPI → Travelpayouts (fallback)
+│   ├── hotels.py          # Hoteles: Hotels.nl API → precios estimados (fallback)
+│   ├── hotels_nl.py       # Integración con Hotels.nl API (datos reales)
 │   ├── cars.py            # Coches: RapidAPI → precios estimados (fallback)
 │   ├── airports.py        # Autocomplete de aeropuertos + aeropuertos alternativos
 │   └── plan.py            # Generador de plan de viaje + resolver_iata()
@@ -93,17 +94,19 @@ pip install -r requirements.txt
 
 ### 2. Configurar variables de entorno
 
-Creá un archivo `.env` en la raíz:
+Creá un archivo `.env` en la raíz usando `.env.example` como plantilla:
 
 ```env
 TRAVELPAYOUTS_TOKEN=tu_token
 TRAVELPAYOUTS_MARKER=tu_marker
-RAPIDAPI_KEY=tu_rapidapi_key
-RAPIDAPI_HOST=booking-com15.p.rapidapi.com
+HOTELSNL_API_KEY=tu_hotelsnl_key
+PEXELS_API_KEY=tu_pexels_key
 ```
 
-- **Travelpayouts** — Registrate en [travelpayouts.com](https://travelpayouts.com) y obtené token + marker desde el panel de APIs.
-- **RapidAPI** — Suscribite al [plan gratuito de Booking.com API](https://rapidapi.com/DataCrawler/api/booking-com15) y copiá tu API key.
+- **Travelpayouts** — Registrate en [travelpayouts.com](https://travelpayouts.com) y obtené token + marker desde el panel de APIs. Necesario para vuelos y autocomplete.
+- **Hotels.nl** — Registrate en [hotels.nl/api/register.php](https://hotels.nl/api/register.php) (20 segundos, gratis). 200 requests/día. Necesario para hoteles reales.
+- **Pexels** — Registrate en [pexels.com/api](https://pexels.com/api) (gratis, 200 req/hora). Para fotos de hoteles.
+- **RapidAPI** — Opcional si tenés quota disponible en [Booking.com API](https://rapidapi.com/DataCrawler/api/booking-com15). Usado solo para coches.
 
 ### 3. Iniciar backend
 
@@ -125,13 +128,44 @@ El frontend arranca en `http://localhost:5173` con proxy automático al backend.
 
 ---
 
+## Variables de entorno
+
+| Variable | Requerido | Propósito |
+|----------|-----------|-----------|
+| `TRAVELPAYOUTS_TOKEN` | Sí | Token de Travelpayouts para vuelos y autocomplete |
+| `TRAVELPAYOUTS_MARKER` | Sí | Marker de afiliado Aviasales para comisiones |
+| `HOTELSNL_API_KEY` | No* | API key de Hotels.nl para hoteles reales (200 req/día gratis) |
+| `PEXELS_API_KEY` | No* | API key de Pexels para fotos de hoteles (200 req/hora gratis) |
+| `CORS_ORIGINS` | No | Orígenes CORS separados por coma (default: `http://localhost:5173,http://127.0.0.1:5173`) |
+
+\* Sin `HOTELSNL_API_KEY` los hoteles se muestran como precios estimados. Sin `PEXELS_API_KEY` se usan placehold.co.
+
+---
+
 ## API Endpoints
 
 ### `POST /plan/` — Generar plan de viaje
 
+`POST /plan/`
+
 Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y presupuesto; resuelve aeropuertos automáticamente y devuelve el mejor plan disponible.
 
-**Request:**
+**Campos del body:**
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `origen` | string | — | Ciudad o código IATA de origen (ej: `Bogotá`, `BOG`) |
+| `destino` | string | — | Ciudad o código IATA de destino (ej: `Madrid`, `MAD`) |
+| `fecha_salida` | string | — | Fecha de salida `YYYY-MM-DD` |
+| `presupuesto` | number | — | Presupuesto total en USD |
+| `pasajeros` | integer | `1` | Número de pasajeros (1-9) |
+| `incluir_hotel` | boolean | `true` | Incluir búsqueda de hoteles |
+| `incluir_vehiculo` | boolean | `false` | Incluir búsqueda de coches |
+| `tier` | string | `"estandar"` | Calidad del viaje: `economico`, `estandar`, `premium` |
+| `modo` | string | `"exacto"` | `exacto` requiere `fecha_regreso`; `flexible` usa `duracion_dias` |
+| `duracion_dias` | integer | `7` | Duración en días (solo modo `flexible`, 1-14) |
+
+**Request (modo exacto):**
 ```json
 {
   "origen": "Bogotá",
@@ -142,11 +176,26 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
   "pasajeros": 1,
   "incluir_hotel": true,
   "incluir_vehiculo": false,
-  "tier": "estandar"
+  "tier": "estandar",
+  "modo": "exacto"
 }
 ```
 
-**Response:**
+**Request (modo flexible):**
+```json
+{
+  "origen": "Bogotá",
+  "destino": "Madrid",
+  "fecha_salida": "2026-12-15",
+  "presupuesto": 800,
+  "pasajeros": 1,
+  "tier": "estandar",
+  "modo": "flexible",
+  "duracion_dias": 7
+}
+```
+
+**Response (200):**
 ```json
 {
   "origen": "BOG",
@@ -157,53 +206,315 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
   "noches": 7,
   "presupuesto": 800.00,
   "plan_optimo": {
-    "vuelo": {...},
-    "hotel": {...},
-    "coche": {...},
-    "total": 750.00,
+    "vuelo": {
+      "origen": "BOG",
+      "destino": "MAD",
+      "aerolinea": "Air Europa",
+      "precio": 320.00,
+      "duracion": "9h 30m",
+      "escalas": 0,
+      "link_compra": "https://www.aviasales.com/search/BOG1512MAD2212?marker=723238"
+    },
+    "hotel": {
+      "nombre": "Hotel Gran Madrid",
+      "precio_noche": 55.00,
+      "total": 385.00,
+      "estrellas": 3,
+      "precision": "real"
+    },
+    "total": 705.00,
     "dentro_presupuesto": true
   },
-  "alternativas": [...],
-  "hoteles": [...],
-  "coches": { "coches": [...], "aviso": "..." },
-  "aeropuertos_alternativos": [...],
+  "alternativas": [
+    {
+      "vuelo": { "aerolinea": "Iberia", "precio": 380.00, "escalas": 1 },
+      "hotel": { "nombre": "Hotel Europa", "precio_noche": 45.00, "total": 315.00 },
+      "total": 695.00,
+      "dentro_presupuesto": true
+    }
+  ],
+  "hoteles": [
+    {
+      "nombre": "Hotel Gran Madrid",
+      "precio_noche": 55.00,
+      "estrellas": 3,
+      "rating": 8.2,
+      "foto_url": "https://images.pexels.com/...",
+      "amenities": ["wifi", "desayuno", "piscina"],
+      "tipo": "real",
+      "link_reserva": "https://hotels.nl/booking/hash123"
+    }
+  ],
+  "coches": {
+    "coches": [
+      {
+        "nombre": "Toyota Corolla",
+        "tipo": "Compacto",
+        "precio_total": 180.00,
+        "link_reserva": "https://www.economybookings.com/..."
+      }
+    ],
+    "aviso": "Precios estimados — sin disponibilidad en tiempo real"
+  },
+  "aeropuertos_alternativos": [
+    { "codigo": "BCN", "nombre": "Barcelona-El Prat", "distancia_km": 505 }
+  ],
   "aviso": null,
   "precision": "exacta"
 }
 ```
 
-> **Nota:** `origen` y `destino` aceptan nombres de ciudad (ej: "Bogotá", "Miami") o códigos IATA (ej: "BOG", "MIA"). El backend los resuelve automáticamente.
+**Códigos de error:**
+
+| Código | Significado | Ejemplo |
+|--------|-------------|---------|
+| `422` | Error de validación | Fecha inválida, origen = destino, tier incorrecto |
+| `502` | API externa no disponible | Travelpayouts caído, Hotels.nl sin respuesta |
+| `429` | Rate limit excedido | Más de 30 planes/día desde la misma IP |
+
+---
 
 ### `GET /flights/` — Buscar vuelos
 
-`/flights/?origen=BOG&destino=MIA&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1`
+`GET /flights/?origen=BOG&destino=MIA&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1`
 
-> Requiere códigos IATA. Usado internamente por el planificador.
+**Parámetros:**
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `origen` | string | — | Código IATA de origen (ej: `BOG`) |
+| `destino` | string | — | Código IATA de destino (ej: `MIA`) |
+| `fecha_salida` | string | — | Fecha de salida `YYYY-MM-DD` |
+| `fecha_regreso` | string | — | Fecha de regreso `YYYY-MM-DD` (debe ser posterior) |
+| `pasajeros` | integer | `1` | Número de pasajeros |
+
+**Response (200):**
+```json
+{
+  "vuelos": [
+    {
+      "origen": "BOG",
+      "destino": "MIA",
+      "aerolinea": "American Airlines",
+      "precio": 280.00,
+      "duracion": "4h 20m",
+      "escalas": 0,
+      "fecha_salida": "2026-12-15",
+      "link_compra": "https://www.aviasales.com/search/BOG1512MIA2212?marker=723238"
+    }
+  ],
+  "aviso": null,
+  "precision": "exacta"
+}
+```
+
+> **Nota:** Si no hay vuelos en la fecha exacta, busca en todo el mes (`precision: "mes"`). Si tampoco, muestra próximos disponibles (`precision: "aproximada"`). Requiere códigos IATA (usar `/airports/` para resolver).
+
+**Validaciones:**
+- Fechas deben tener formato `YYYY-MM-DD`
+- `fecha_regreso` debe ser posterior a `fecha_salida`
+- Rango máximo: 30 días
+
+---
 
 ### `GET /hotels/` — Buscar hoteles
 
-`/hotels/?ciudad=Miami&checkin=2026-12-15&checkout=2026-12-20&adultos=2`
+`GET /hotels/?ciudad=Miami&checkin=2026-12-15&checkout=2026-12-20&adultos=2`
+
+**Parámetros:**
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `ciudad` | string | — | Nombre de la ciudad (ej: `Miami`, `Bogotá`) |
+| `checkin` | string | — | Fecha de entrada `YYYY-MM-DD` |
+| `checkout` | string | — | Fecha de salida `YYYY-MM-DD` (posterior a checkin) |
+| `adultos` | integer | `2` | Número de adultos |
+| `q` | string | `""` | Filtro opcional por nombre de hotel |
+
+**Response (200) — modo real (con HOTELSNL_API_KEY):**
+```json
+{
+  "hoteles": [
+    {
+      "nombre": "Miami Beach Hotel",
+      "precio_noche": 89.50,
+      "estrellas": 4,
+      "rating": 8.5,
+      "foto_url": "https://images.pexels.com/...",
+      "amenities": ["wifi", "piscina", "gimnasio"],
+      "tipo": "real",
+      "link_reserva": "https://hotels.nl/booking/hash456"
+    }
+  ],
+  "aviso": null,
+  "ciudad": "Miami",
+  "precision": "real"
+}
+```
+
+**Response (200) — modo estimado (sin HOTELSNL_API_KEY):**
+```json
+{
+  "hoteles": [
+    {
+      "nombre": "Hotel en Miami (estimado)",
+      "precio_noche": 75.00,
+      "estrellas": 3,
+      "foto_url": "https://via.placeholder.com/400x300",
+      "tipo": "estimado",
+      "link_reserva": "https://www.booking.com/searchresults.html?ss=Miami"
+    }
+  ],
+  "aviso": "Mostrando precios estimados. Configurá HOTELSNL_API_KEY para datos reales.",
+  "ciudad": "Miami",
+  "precision": "estimada"
+}
+```
+
+> **Nota:** Con `HOTELSNL_API_KEY` usa Hotels.nl (datos reales con fotos, ratings, amenities). Sin key, devuelve precios de referencia con links a Booking.com.
+
+---
 
 ### `GET /cars/` — Buscar alquiler de coches
 
-`/cars/?ciudad=MIA&pickup_date=2026-12-15&dropoff_date=2026-12-22`
+`GET /cars/?ciudad=MIA&pickup_date=2026-12-15&dropoff_date=2026-12-22&pickup_time=10:00&dropoff_time=10:00&driver_age=30&currency=USD`
+
+**Parámetros:**
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `ciudad` | string | — | Código IATA de la ciudad destino |
+| `pickup_date` | string | — | Fecha de recogida `YYYY-MM-DD` |
+| `dropoff_date` | string | — | Fecha de devolución `YYYY-MM-DD` |
+| `pickup_time` | string | `"10:00"` | Hora de recogida `HH:MM` |
+| `dropoff_time` | string | `"10:00"` | Hora de devolución `HH:MM` |
+| `driver_age` | integer | `30` | Edad del conductor |
+| `currency` | string | `"USD"` | Moneda (USD, EUR, COP, etc.) |
+
+**Response (200):**
+```json
+{
+  "coches": [
+    {
+      "nombre": "Toyota Corolla",
+      "tipo": "Compacto",
+      "precio_total": 210.00,
+      "moneda": "USD",
+      "pickup_date": "2026-12-15",
+      "dropoff_date": "2026-12-22",
+      "proveedor": "Localrent",
+      "link_reserva": "https://localrent.com/..."
+    }
+  ],
+  "aviso": "Precios de referencia — la disponibilidad real puede variar"
+}
+```
+
+> **Nota:** Usa RapidAPI (Booking.com) cuando hay quota disponible. Sin quota, devuelve precios estimados con links de afiliado a Localrent/EconomyBookings.
+
+---
 
 ### `GET /airports/` — Autocomplete de aeropuertos
 
-`/airports/?q=Madrid`
+`GET /airports/?q=Madrid`
 
-Devuelve aeropuertos/ciudades que coinciden con el término. Usado por el frontend para el autocomplete y por el backend para resolver ciudades a IATA.
+**Parámetros:**
+
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `q` | string | Término de búsqueda (mínimo **2 caracteres**) |
+
+**Response (200):**
+```json
+[
+  { "codigo": "MAD", "nombre": "Madrid-Barajas", "pais": "España" },
+  { "codigo": "MAD", "nombre": "Madrid", "pais": "España" },
+  { "codigo": "LCG", "nombre": "A Coruña", "pais": "España" }
+]
+```
+
+> **Nota:** Usa la API pública de Travelpayouts — **no requiere API key**. Sirve tanto para autocomplete en el frontend como para resolución ciudad → IATA en el backend.
+
+---
+
+### `GET /min-budget/` — Presupuesto mínimo sugerido
+
+`GET /plan/min-budget/?origen=Bogotá&destino=Madrid&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1&incluir_hotel=true&incluir_vehiculo=false`
+
+Calcula un presupuesto mínimo usando precios de referencia estáticos — **no hace llamadas a APIs externas**.
+
+**Response (200):**
+```json
+{
+  "presupuesto_minimo": 450.00,
+  "desglose": {
+    "vuelo": { "minimo": 300, "maximo": 600 },
+    "hotel": { "minimo": 35, "maximo": 100 },
+    "coche": { "minimo": 25, "maximo": 60 }
+  },
+  "noches": 7,
+  "pasajeros": 1
+}
+```
+
+---
+
+### `GET /health` — Health check
+
+`GET /health`
+
+```json
+{ "status": "ok", "app": "RushTrip API", "version": "1.1.0" }
+```
+
+---
+
+### Errores — Formato unificado
+
+Todos los endpoints devuelven errores con esta estructura:
+
+```json
+{
+  "error": true,
+  "code": "validation_error",
+  "detail": "Descripción del error específico"
+}
+```
+
+| Código HTTP | Código interno | Cuándo ocurre |
+|-------------|---------------|---------------|
+| `422` | `validation_error` | Parámetros inválidos, fechas incorrectas, origen = destino |
+| `429` | `rate_limit` | Límite diario excedido (30 planes, 100 búsquedas/IP) |
+| `502` | `external_api_error` | API externa (Travelpayouts, Hotels.nl) no responde |
+| `500` | `internal_error` | Error inesperado del servidor |
+
+---
+
+### Rate limiting
+
+La API aplica límites diarios por IP (persisten en SQLite, sobreviven reinicios):
+
+| Endpoint | Límite diario/IP |
+|----------|-----------------|
+| `POST /plan/` | 30 requests |
+| `GET /flights/` | 100 requests |
+| `GET /hotels/` | 100 requests |
+| `GET /cars/` | 100 requests |
+| `GET /airports/` | 100 requests |
+| Otros | 200 requests |
+
+Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. Los endpoints `/health`, `/`, `/docs` y `/openapi.json` no están limitados.
 
 ---
 
 ## Cómo funciona el planificador
 
 1. **Resuelve ciudades a aeropuertos** — El usuario escribe "Bogotá" y "Madrid". El backend usa la API de Travelpayouts para convertirlos a "BOG" y "MAD" automáticamente.
-2. **Busca vuelos** — Consulta Travelpayouts para la ruta y fechas dadas. Compara directos, conexiones y distintas aerolíneas.
-3. **Busca hoteles** — Primero intenta RapidAPI (Booking.com) con fotos y precios reales. Si falla, usa Travelpayouts con precios estimados por destino.
+2. **Busca vuelos** — Consulta Travelpayouts para la ruta y fechas dadas. Compara directos, conexiones y distintas aerolíneas. Incluye links de compra con afiliación Aviasales.
+3. **Busca hoteles** — Hotels.nl API con datos reales (nombres, fotos, precios, ratings, amenities). Si no hay API key, usa precios estimados por destino. Fotos complementadas con Pexels.
 4. **Empareja hotel-plan** — Para cada vuelo, calcula el presupuesto restante y asigna el mejor hotel real que entre en ese monto.
 5. **Selecciona óptimo** — Elige el plan cuyo costo total se acerque más al presupuesto sin superarlo. Si ninguno cabe, muestra el más barato disponible.
-6. **Busca coches** — Agrega opciones de alquiler en el destino si queda presupuesto.
+6. **Busca coches** — Agrega opciones de alquiler en el destino si queda presupuesto con links a Localrent/EconomyBookings.
 7. **Comparativa por tiers** — El frontend muestra opciones Económico, Estándar y Premium para que el usuario elija según su presupuesto.
 
 ### Estrategia de fallback
@@ -211,8 +522,9 @@ Devuelve aeropuertos/ciudades que coinciden con el término. Usado por el fronte
 | Servicio | Primario | Fallback |
 |----------|----------|----------|
 | Vuelos | Travelpayouts (fecha exacta) | Travelpayouts (mes) → Travelpayouts (sin fecha) |
-| Hoteles | RapidAPI (Booking.com) | Travelpayouts (precio estimado) |
+| Hoteles | Hotels.nl API (datos reales) | Precios estimados por destino |
 | Coches | RapidAPI (Booking.com) | Precios estimados por destino |
+| Fotos hoteles | Pexels API | Placehold.co |
 | Resolución ciudad → IATA | Travelpayouts autocomplete | Cache local |
 
 ---

@@ -28,8 +28,10 @@ Gestión centralizada de configuración usando Pydantic Settings.
 |----------|-------------|---------|
 | `TRAVELPAYOUTS_TOKEN` | Token para API de vuelos | "" |
 | `TRAVELPAYOUTS_MARKER` | ID de afiliado para tracked links | "" |
-| `RAPIDAPI_KEY` | API key para RapidAPI | "" |
+| `RAPIDAPI_KEY` | API key para RapidAPI (coches) | "" |
 | `RAPIDAPI_HOST` | Host de RapidAPI | "booking-com15.p.rapidapi.com" |
+| `HOTELSNL_API_KEY` | API key para Hotels.nl (hoteles reales, gratis) | "" |
+| `PEXELS_API_KEY` | API key para Pexels (fotos de hoteles) | "" |
 | `CORS_ORIGINS` | Orígenes CORS (separados por coma) | "*" |
 | `DEBUG` | Modo debug | True |
 
