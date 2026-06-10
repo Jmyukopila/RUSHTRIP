@@ -35,13 +35,13 @@ Busca aeropuertos y ciudades por nombre usando el autocomplete público de Trave
 ---
 
 ### cars.py
-Busca opciones de alquiler de coches via RapidAPI (Booking.com).
+Busca opciones de alquiler de coches via RapidAPI.
 
 **Función principal:**
 - `buscar_coches(iata, pickup_date, dropoff_date, ...)` → Devuelve lista de coches
 
 **Fuentes de datos:**
-1. **Primary:** RapidAPI/Booking.com (datos reales)
+1. **Primary:** RapidAPI (datos de Booking.com, sin afiliación)
 2. **Fallback:** Precios estimados por ciudad si la API falla
 
 **Coordenadas:** Incluye coordenadas de 40+ ciudades para la búsqueda
@@ -80,7 +80,7 @@ Busca hoteles con fallback doble: Hotels.nl API → precios estimados.
 **Características:**
 - Enriquecimiento de fotos vía Pexels API en todos los niveles
 - Cache persistente SQLite (24h)
-- Links de afiliado a Hotels.nl/Booking.com según fuente
+- Links de afiliado a Hotels.nl (comisión por reserva)
 - Filtro por estrellas y búsqueda por nombre (`q`)
 
 ### hotels_nl.py
@@ -95,7 +95,7 @@ Integración con la API REST de Hotels.nl para búsqueda de hoteles reales.
 
 **Endpoint usado:** `POST /api/search.php` con geocoding automático de ubicación
 
-**Booking:** Usa `/api/booking.php` con `hotelsnl_hash` para iniciar reserva con un clic (requiere cuenta verificada).
+**Reserva (Hotels.nl):** Usa `/api/booking.php` con `hotelsnl_hash` para iniciar reserva con un clic (requiere cuenta verificada, genera comisión).
 
 ---
 

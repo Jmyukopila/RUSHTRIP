@@ -12,7 +12,7 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 |------|-----------|
 | Backend | Python 3.11+, FastAPI, Uvicorn |
 | Frontend | React 18, Vite, Tailwind CSS |
-| APIs externas | Travelpayouts (Aviasales), Hotels.nl, Pexels, Booking.com (afiliados) |
+| APIs externas | Travelpayouts (Aviasales), Hotels.nl, Pexels, RapidAPI (coches) |
 
 ---
 
@@ -22,7 +22,7 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 - **Resolución automática de aeropuertos** — No necesitás saber códigos IATA. Escribís "Bogotá" y el sistema lo convierte a "BOG" automáticamente. También funciona con códigos IATA si los conocés.
 - **Búsqueda de vuelos** — Consulta precios en Travelpayouts con fallback inteligente: si no hay vuelos en la fecha exacta, busca en todo el mes, y si tampoco, muestra los próximos disponibles. Compara conexiones, directos y distintas aerolíneas.
 - **Hoteles con fotos y precios reales** — Via Hotels.nl API (datos reales con fotos, precios, ratings). Fallback a precios estimados por destino si no hay API key configurada. Las fotos se complementan con Pexels.
-- **Alquiler de coches** — Via RapidAPI (Booking.com) con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
+- **Alquiler de coches** — Via RapidAPI con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
 - **Comparativa por tiers** — Al ver los resultados, podés comparar opciones Económico, Estándar y Premium para elegir según tu presupuesto.
 - **Frontend responsive** — Interfaz moderna hecha en React + Tailwind con cards, badges, diseño limpio y animaciones suaves.
 
@@ -106,7 +106,7 @@ PEXELS_API_KEY=tu_pexels_key
 - **Travelpayouts** — Registrate en [travelpayouts.com](https://travelpayouts.com) y obtené token + marker desde el panel de APIs. Necesario para vuelos y autocomplete.
 - **Hotels.nl** — Registrate en [hotels.nl/api/register.php](https://hotels.nl/api/register.php) (20 segundos, gratis). 200 requests/día. Necesario para hoteles reales.
 - **Pexels** — Registrate en [pexels.com/api](https://pexels.com/api) (gratis, 200 req/hora). Para fotos de hoteles.
-- **RapidAPI** — Opcional si tenés quota disponible en [Booking.com API](https://rapidapi.com/DataCrawler/api/booking-com15). Usado solo para coches.
+- **RapidAPI** — Opcional si tenés quota disponible en [RapidAPI](https://rapidapi.com/DataCrawler/api/booking-com15). Usado solo para coches (datos via RapidAPI, sin afiliación directa con Booking.com).
 
 ### 3. Iniciar backend
 
@@ -362,7 +362,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
       "estrellas": 3,
       "foto_url": "https://via.placeholder.com/400x300",
       "tipo": "estimado",
-      "link_reserva": "https://www.booking.com/searchresults.html?ss=Miami"
+      "link_reserva": "https://hotels.nl/search?q=Miami"
     }
   ],
   "aviso": "Mostrando precios estimados. Configurá HOTELSNL_API_KEY para datos reales.",
@@ -371,7 +371,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 }
 ```
 
-> **Nota:** Con `HOTELSNL_API_KEY` usa Hotels.nl (datos reales con fotos, ratings, amenities). Sin key, devuelve precios de referencia con links a Booking.com.
+> **Nota:** Con `HOTELSNL_API_KEY` usa Hotels.nl (datos reales con fotos, ratings, amenities, comisión por reserva). Sin key, devuelve precios de referencia con enlace de búsqueda genérico.
 
 ---
 
@@ -410,7 +410,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 }
 ```
 
-> **Nota:** Usa RapidAPI (Booking.com) cuando hay quota disponible. Sin quota, devuelve precios estimados con links de afiliado a Localrent/EconomyBookings.
+> **Nota:** Usa RapidAPI cuando hay quota disponible (datos de Booking.com, sin afiliación). Sin quota, devuelve precios estimados con links de afiliado a Localrent/EconomyBookings.
 
 ---
 
@@ -523,7 +523,7 @@ Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. L
 |----------|----------|----------|
 | Vuelos | Travelpayouts (fecha exacta) | Travelpayouts (mes) → Travelpayouts (sin fecha) |
 | Hoteles | Hotels.nl API (datos reales) | Precios estimados por destino |
-| Coches | RapidAPI (Booking.com) | Precios estimados por destino |
+| Coches | RapidAPI | Precios estimados por destino |
 | Fotos hoteles | Pexels API | Placehold.co |
 | Resolución ciudad → IATA | Travelpayouts autocomplete | Cache local |
 

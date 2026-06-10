@@ -142,7 +142,7 @@ Busca hoteles en una ciudad con datos reales o estimados.
       "rating": 7.5,
       "precio_noche": 108.00,
       "precio_total": 756.00,
-      "link_reserva": "https://www.booking.com/searchresults.html?ss=...",
+      "link_reserva": "https://hotels.nl/search?q=Miami",
       "tipo": "estimado"
     }
   ],
@@ -181,7 +181,7 @@ Busca opciones de alquiler de coches.
       "nombre": "Toyota Corolla",
       "tipo": "Compacto",
       "precio_total": 280.00,
-      "link_reserva": "https://www.booking.com/..."
+      "link_reserva": "https://localrent.com/..."
     }
   ]
 }
