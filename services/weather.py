@@ -52,7 +52,7 @@ def _describir_codigo(codigo: int) -> tuple[str, str]:
     return WMO_CODES.get(codigo, ("Variable", "🌥️"))
 
 
-async def _resolver_coords(ciudad: str, iata: str | None = None) -> tuple[float, float] | None:
+async def resolver_coords(ciudad: str, iata: str | None = None) -> tuple[float, float] | None:
     """
     Resuelve nombre de ciudad → (lat, lon).
     Cascada: cache → geocoding de Open-Meteo → coordenadas de aeropuerto por IATA.
@@ -254,7 +254,7 @@ async def obtener_clima(
     Devuelve None si no se pudo obtener nada — nunca lanza excepción.
     """
     try:
-        coords = await _resolver_coords(ciudad, iata=iata)
+        coords = await resolver_coords(ciudad, iata=iata)
         if not coords:
             logger.warning(f"No se pudieron resolver coordenadas para '{ciudad}'")
             return None

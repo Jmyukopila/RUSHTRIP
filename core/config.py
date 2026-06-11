@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     hotelsnl_api_key:     str = ""
 
+    opentripmap_api_key:  str = ""
+
     cors_origins:         str = "*"
     debug:                bool = True
 
