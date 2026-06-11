@@ -2,6 +2,7 @@
 # Servicio de generación de planes de viaje optimizados por presupuesto
 # Combina búsquedas de vuelos, hoteles y coches para crear el mejor plan
 
+import asyncio
 import logging
 import re
 from core.config import settings
@@ -498,6 +499,7 @@ async def generar_plan(
             "aviso":          aviso_vuelos or "No se encontraron vuelos para esta ruta.",
             "precision":      precision,
             "clima":          None,
+            "actividades":    None,
         }
 
     # 4. Calcular plan para cada vuelo disponible
@@ -567,13 +569,17 @@ async def generar_plan(
         incluir_vehiculo=incluir_vehiculo,
     )
 
-    # 8. Clima del destino para los días del viaje (no bloquea el plan si falla)
-    clima = None
+    # 8. Clima y actividades del destino, en paralelo (no bloquean el plan si fallan)
+    clima, actividades = None, None
     try:
         from services.weather import obtener_clima
-        clima = await obtener_clima(ciudad_destino, fecha_salida, fecha_regreso, iata=destino)
+        from services.activities import obtener_actividades
+        clima, actividades = await asyncio.gather(
+            obtener_clima(ciudad_destino, fecha_salida, fecha_regreso, iata=destino),
+            obtener_actividades(ciudad_destino, iata=destino),
+        )
     except Exception as e:
-        logger.warning(f"No se pudo obtener clima para {ciudad_destino}: {e}")
+        logger.warning(f"No se pudo obtener clima/actividades para {ciudad_destino}: {e}")
 
     # Devolver resultado completo
     return {
@@ -594,4 +600,5 @@ async def generar_plan(
         "precision":      precision,
         "aeropuertos_alternativos": alternativas_aeropuerto,
         "clima":          clima,
+        "actividades":    actividades,
     }
