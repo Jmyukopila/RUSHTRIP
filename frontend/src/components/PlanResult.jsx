@@ -6,6 +6,7 @@ import FlightCard from './FlightCard';
 import HotelCard from './HotelCard';
 import CarCard from './CarCard';
 import WeatherSection from './WeatherSection';
+import ActivitiesSection from './ActivitiesSection';
 import { AFFILIATE_LINKS } from '../constants';
 
 function formatMoney(n) {
@@ -334,7 +335,7 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
   }
   if (!data) return null;
 
-  const { aviso, precision, plan_optimo, alternativas, hoteles, coches, aeropuertos_alternativos, clima } = data;
+  const { aviso, precision, plan_optimo, alternativas, hoteles, coches, aeropuertos_alternativos, clima, actividades } = data;
 
   const hotelesFiltrados = (hoteles || []).filter((h) => {
     if (!hotelSearch) return true;
@@ -466,29 +467,11 @@ export default function PlanResult({ data, loading, error, onRetry, onModify }) 
       )}
 
       {(data.ciudad_destino || data.destino) && (
-        <div className="animate-fade-slide-up" style={{ animationDelay: '1300ms', animationFillMode: 'both' }}>
-          <div className="card-base p-5 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2 L15 9 L22 9 L16.5 14 L18 21 L12 17 L6 21 L7.5 14 L2 9 L9 9 L12 2Z" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-display text-lg text-text">Actividades en {data.ciudad_destino || data.destino}</h3>
-                <p className="text-sm text-muted-300 mt-1">Explora tours, atracciones y experiencias en tu destino</p>
-                <div className="flex flex-wrap gap-2 mt-4">
-                  <a href={AFFILIATE_LINKS.klook} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm py-2 px-4">
-                    Ver en Klook →
-                  </a>
-                  <a href={AFFILIATE_LINKS.kkday} target="_blank" rel="noopener noreferrer" className="btn-outline text-sm py-2 px-4">
-                    KKday →
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ActivitiesSection
+          actividades={actividades}
+          ciudad={data.ciudad_destino || data.destino}
+          delay={1300}
+        />
       )}
 
       {!plan_optimo && !alternativas?.length && !hoteles?.length && !coches?.coches?.length && (
