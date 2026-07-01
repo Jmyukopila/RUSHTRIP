@@ -272,13 +272,15 @@ def _armar_plan(
         usado = precio_vuelo + costo_hotel
         restante = presupuesto - usado
 
-        # Seleccionar el coche más caro que quepa en el presupuesto restante
+        # Seleccionar coche segun el tier: 'desc' (premium) toma el más caro
+        # que quepa en el presupuesto restante; 'asc' el más barato
         candidatos = [c for c in coches if c.get("precio_total", 0) <= restante]
         if candidatos:
-            coche = max(candidatos, key=lambda c: c.get("precio_total", 0))
+            elegir = max if coche_orden == "desc" else min
+            coche = elegir(candidatos, key=lambda c: c.get("precio_total", 0))
         else:
             # Si ninguno cabe, tomar el más barato y marcarlo
-            coche = min(coches, key=lambda c: c.get("precio_total", 0))
+            coche = dict(min(coches, key=lambda c: c.get("precio_total", 0)))
             coche["fuera_presupuesto"] = True
 
         plan["coche"] = coche
@@ -304,20 +306,23 @@ def _emparejar_hotel(plan: dict, hoteles: list, presupuesto: float) -> dict:
         Nuevo dict con hotel actualizado
     """
     costo_vuelo = plan["vuelo"]["precio_total"]
-    restante = presupuesto - costo_vuelo
+    costo_coche = plan.get("coche", {}).get("precio_total", 0)
+    restante = presupuesto - costo_vuelo - costo_coche
     nuevo_plan = dict(plan)
 
     if not hoteles:
         nuevo_plan["hotel"] = {**nuevo_plan["hotel"], "tipo": "estimado"}
         return nuevo_plan
 
+    # El mejor hotel que quepa en el presupuesto restante (mejor experiencia);
+    # si ninguno cabe, el más barato disponible
     candidatos = [h for h in hoteles if h.get("precio_total", 0) <= restante]
-    if not candidatos:
-        candidatos = sorted(hoteles, key=lambda h: h.get("precio_total", 0))
-
-    mejor = candidatos[0]
+    if candidatos:
+        mejor = max(candidatos, key=lambda h: h.get("precio_total", 0))
+    else:
+        mejor = min(hoteles, key=lambda h: h.get("precio_total", 0))
     nuevo_plan["hotel"] = {**mejor, "tipo": "recomendado"}
-    nuevo_plan["total"] = round(costo_vuelo + mejor["precio_total"], 2)
+    nuevo_plan["total"] = round(costo_vuelo + costo_coche + mejor["precio_total"], 2)
     nuevo_plan["dentro_presupuesto"] = nuevo_plan["total"] <= presupuesto
     return nuevo_plan
 
@@ -456,6 +461,10 @@ async def generar_plan(
     vuelos       = resultado_vuelos.get("vuelos", [])
     vuelo_prec   = resultado_vuelos.get("precision", "sin_resultados")
     hotel_prec   = resultado_hoteles.get("precision", "exacta") if isinstance(resultado_hoteles, dict) else "exacta"
+    # Los hoteles reportan "real" (precios reales de Hotels.nl); para la
+    # precision combinada del plan equivale a "exacta"
+    if hotel_prec == "real":
+        hotel_prec = "exacta"
     aviso_vuelos = resultado_vuelos.get("aviso")
 
     # Agregar precision combinada: si ambos son exacta → exacta;

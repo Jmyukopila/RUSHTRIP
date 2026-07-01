@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { getHotelDetail } from '../api/client';
+import { IconCheck } from './icons';
 
 function StarRating({ stars, large = false }) {
   const fullStars = Math.min(Math.floor(stars), 5);
@@ -56,7 +58,7 @@ function Lightbox({ images, currentIndex, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 animate-lightboxFade"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 animate-lightboxFade"
       onClick={onClose}
     >
       <button
@@ -107,7 +109,7 @@ function Lightbox({ images, currentIndex, onClose }) {
   );
 }
 
-export default function HotelCard({ hotel, variant = 'default' }) {
+export default function HotelCard({ hotel, variant = 'default', checkin = '', checkout = '', adultos = 2 }) {
   if (!hotel) return null;
 
   const [imgIndex, setImgIndex] = useState(0);
@@ -115,8 +117,37 @@ export default function HotelCard({ hotel, variant = 'default' }) {
   const [imgErrors, setImgErrors] = useState({});
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxStart, setLightboxStart] = useState(0);
+  const [detalle, setDetalle] = useState(null);
+  const [detalleLoading, setDetalleLoading] = useState(false);
+  const [detalleAbierto, setDetalleAbierto] = useState(false);
 
-  const fotos = hotel.fotos_urls?.length > 0 ? hotel.fotos_urls : (hotel.foto_url ? [hotel.foto_url] : []);
+  // Solo los hoteles reales de Hotels.nl tienen id para pedir galería + habitaciones
+  const puedeDetalle = Boolean(hotel.id_hotelsnl && checkin && checkout);
+
+  const cargarDetalle = useCallback(async () => {
+    if (!puedeDetalle || detalle || detalleLoading) return detalle;
+    setDetalleLoading(true);
+    try {
+      const data = await getHotelDetail({
+        id: hotel.id_hotelsnl,
+        checkin,
+        checkout,
+        adultos,
+        ciudad: hotel.ciudad || '',
+      });
+      setDetalle(data);
+      return data;
+    } catch {
+      setDetalle({ fotos_urls: [], habitaciones: [] });
+    } finally {
+      setDetalleLoading(false);
+    }
+  }, [puedeDetalle, detalle, detalleLoading, hotel.id_hotelsnl, hotel.ciudad, checkin, checkout, adultos]);
+
+  // Galería: usa la del detalle (más fotos) cuando esté cargada; si no, la base.
+  const fotosBase = hotel.fotos_urls?.length > 0 ? hotel.fotos_urls : (hotel.foto_url ? [hotel.foto_url] : []);
+  const fotos = detalle?.fotos_urls?.length > 0 ? detalle.fotos_urls : fotosBase;
+  const habitaciones = detalle?.habitaciones || [];
   const currentFoto = fotos[imgIndex] || '';
 
   const handleImgLoad = (url) => setImgLoaded((p) => ({ ...p, [url]: true }));
@@ -125,6 +156,12 @@ export default function HotelCard({ hotel, variant = 'default' }) {
   const openLightbox = (startIdx) => {
     setLightboxStart(startIdx);
     setLightboxOpen(true);
+    cargarDetalle();  // enriquece la galería con más fotos del hotel (on-demand)
+  };
+
+  const toggleDetalle = () => {
+    setDetalleAbierto((v) => !v);
+    cargarDetalle();
   };
 
   const stars = hotel.estrellas || 0;
@@ -257,7 +294,7 @@ export default function HotelCard({ hotel, variant = 'default' }) {
               </div>
               <div className="flex items-center gap-2 mt-1">
                 {stars > 0 && <StarRating stars={stars} />}
-                {stars > 0 && <span className="text-xs text-muted-300">{stars}★</span>}
+                {stars > 0 && <span className="text-xs text-muted-300">{stars} estrellas</span>}
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
@@ -288,9 +325,10 @@ export default function HotelCard({ hotel, variant = 'default' }) {
                   href={hotel.link_reserva}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-outline text-xs py-1.5 px-3 whitespace-nowrap"
+                  className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap"
+                  title="Reservar este hotel"
                 >
-                  {hotel.tipo === 'real' ? 'Hotels.nl' : 'Booking'}
+                  Reservar
                 </a>
               )}
             </div>
@@ -344,6 +382,72 @@ export default function HotelCard({ hotel, variant = 'default' }) {
 
         {hotel.por_que && (
           <p className="text-xs text-muted-300 mt-2 italic leading-relaxed">{hotel.por_que}</p>
+        )}
+
+        {puedeDetalle && (
+          <div className="mt-3 pt-3 border-t border-border-50">
+            <button
+              onClick={toggleDetalle}
+              className="text-xs font-medium text-accent hover:underline flex items-center gap-1"
+            >
+              {detalleLoading
+                ? 'Cargando…'
+                : detalleAbierto
+                ? 'Ocultar habitaciones'
+                : 'Ver habitaciones y más fotos'}
+              {!detalleLoading && (
+                <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 transition-transform ${detalleAbierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              )}
+            </button>
+
+            {detalleAbierto && !detalleLoading && (
+              <div className="mt-3 space-y-2 animate-fadeIn">
+                {habitaciones.length > 0 ? (
+                  habitaciones.map((hab, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-bg/60 border border-border-50 hover:border-accent/30 hover:bg-bg transition-colors duration-200"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-text truncate">{hab.nombre}</p>
+                        <p className="text-[10px] mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                          {hab.cama && <span className="text-muted-300">{hab.cama}</span>}
+                          <span className={`flex items-center gap-1 ${hab.reembolsable ? 'text-success font-medium' : 'text-muted-300'}`}>
+                            {hab.reembolsable && <IconCheck className="w-2.5 h-2.5" />}
+                            {hab.reembolsable ? 'Cancelación gratis' : 'No reembolsable'}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {hab.precio_total > 0 && (
+                          <div className="text-right leading-none">
+                            <span className="font-mono text-accent font-semibold text-sm">
+                              ${Number(hab.precio_total).toFixed(0)}
+                            </span>
+                            <span className="block text-[9px] text-muted-300 mt-0.5">total</span>
+                          </div>
+                        )}
+                        {hab.link_reserva && (
+                          <a
+                            href={hab.link_reserva}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary text-[10px] py-1 px-2.5 whitespace-nowrap"
+                          >
+                            Reservar
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-300">No hay habitaciones disponibles para estas fechas.</p>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

@@ -1,63 +1,46 @@
 import { useState, useEffect } from 'react';
 import AirportInput from './AirportInput';
 import { getMinBudget } from '../api/client';
+import {
+  IconWallet, IconStar, IconStarRow, IconCheckCircle, MetallicTierIcon, TIER_METAL,
+  IconMapPin, IconCalendar, IconClock, IconUsers, IconHotel, IconCar, IconCheck, IconPlane,
+} from './icons';
 
+// Metal por tier (neuromarketing): bronce → plata → oro, de menos a más brillante.
 const TIERS = [
   {
     key: 'economico',
     label: 'Económico',
     stars: 3,
-    icon: '💪',
-    desc: 'Viaje funcional, vuelo directo + hoteles 1-3★',
+    desc: 'Viaje funcional, vuelo directo + hoteles 1-3 estrellas',
   },
   {
     key: 'estandar',
     label: 'Estándar',
     stars: 4,
-    icon: '⭐',
-    desc: 'Balance calidad/precio, hoteles 3-4★',
+    desc: 'Balance calidad/precio, hoteles 3-4 estrellas',
   },
   {
     key: 'premium',
     label: 'Premium',
     stars: 5,
-    icon: '👑',
-    desc: 'Máxima comodidad, hoteles 4-5★, sin low-cost',
+    desc: 'Máxima comodidad, hoteles 4-5 estrellas, sin low-cost',
   },
 ];
 
-function StepIndicator({ currentStep }) {
+function SectionHeader({ icon: Icon, step, title, subtitle }) {
   return (
-    <div className="flex items-center justify-center gap-0 mb-10">
-      {[1, 2].map((step) => (
-        <div key={step} className="flex items-center">
-          <div className="flex flex-col items-center gap-1.5">
-            <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ease-smooth ${
-                step <= currentStep
-                  ? 'bg-accent text-white shadow-lg shadow-accent/25'
-                  : 'bg-border-100 text-muted-300'
-              }`}
-            >
-              {step < currentStep ? (
-                <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 10 L8 14 L16 6" />
-                </svg>
-              ) : (
-                step
-              )}
-            </div>
-            <span className={`text-xs font-medium ${step <= currentStep ? 'text-accent' : 'text-muted-300'}`}>
-              {step === 1 ? 'Destino' : 'Presupuesto'}
-            </span>
-          </div>
-          {step === 1 && (
-            <div className={`w-16 sm:w-24 h-0.5 mx-2 sm:mx-3 rounded-full transition-colors duration-300 ${
-              currentStep > 1 ? 'bg-accent' : 'bg-border-100'
-            }`} />
-          )}
+    <div className="flex items-center gap-3 mb-4">
+      <span className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+        <Icon className="w-[18px] h-[18px]" />
+      </span>
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] text-accent2-600 font-semibold">{step}</span>
+          <h3 className="font-display text-lg text-text leading-none">{title}</h3>
         </div>
-      ))}
+        {subtitle && <p className="text-xs text-muted-300 mt-1">{subtitle}</p>}
+      </div>
     </div>
   );
 }
@@ -116,22 +99,78 @@ function BudgetSlider({ value, min, max, suggested, onChange }) {
   );
 }
 
-function StepPanel({ children, isActive }) {
+// Panel lateral "Tu plan": refleja en vivo los datos del formulario.
+function LivePlanPanel({ form, minBudgetData, loadingMinBudget, noches }) {
+  const origen = form.origenCode || '—';
+  const destino = form.destinoCode || '—';
+  const tier = TIERS.find((t) => t.key === form.tier) || TIERS[1];
+  const suficiente = minBudgetData
+    ? form.presupuesto >= minBudgetData.presupuesto_minimo_sugerido
+    : null;
+
   return (
-    <div
-      className={`transition-all duration-500 ease-smooth ${
-        isActive
-          ? 'opacity-100 translate-x-0 max-h-[2000px]'
-          : 'opacity-0 translate-x-8 max-h-0 overflow-hidden'
-      }`}
-    >
-      {children}
+    <div className="relative overflow-hidden rounded-2xl border border-border-100 card-shadow-lg bg-gradient-to-br from-accent/[0.05] via-white to-accent2/[0.06]">
+      <div className="absolute -top-10 -right-10 w-32 h-32 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
+
+      <div className="relative p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <IconPlane className="w-4 h-4 text-accent" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-400">Tu plan</span>
+        </div>
+
+        {/* Ruta */}
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <span className="font-mono text-2xl font-bold text-text">{origen}</span>
+          <span className="flex-1 relative flex items-center px-1">
+            <span className="flex-1 border-t border-dashed border-accent2-400/60" />
+            <IconPlane className="w-4 h-4 text-accent shrink-0 mx-1 rotate-90" />
+            <span className="flex-1 border-t border-dashed border-accent2-400/60" />
+          </span>
+          <span className="font-mono text-2xl font-bold text-text">{destino}</span>
+        </div>
+
+        <div className="space-y-2.5 text-sm border-t border-border-50 pt-4">
+          <LiveRow icon={IconCalendar} label="Salida" value={form.fecha_salida || 'Sin fecha'} />
+          <LiveRow icon={IconClock} label="Duración" value={`${noches} noche${noches === 1 ? '' : 's'}`} />
+          <LiveRow icon={IconUsers} label="Pasajeros" value={`${form.pasajeros}`} />
+          <LiveRow icon={(p) => <MetallicTierIcon tier={form.tier} {...p} />} label="Estilo" value={tier.label} />
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-border-50">
+          <p className="text-[11px] uppercase tracking-wider text-muted-300 mb-1">Presupuesto</p>
+          <p className="font-mono text-3xl font-bold text-accent leading-none">${form.presupuesto}</p>
+          {loadingMinBudget ? (
+            <p className="text-xs text-muted-300 mt-2">Calculando mínimo…</p>
+          ) : suficiente === true ? (
+            <p className="flex items-center gap-1 text-xs text-success mt-2">
+              <IconCheckCircle className="w-3.5 h-3.5" /> Presupuesto suficiente
+            </p>
+          ) : suficiente === false ? (
+            <p className="text-xs text-warning mt-2">
+              Mínimo sugerido: ${minBudgetData.presupuesto_minimo_sugerido}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-300 mt-2">Completa origen, destino y fecha</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LiveRow({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="flex items-center gap-2 text-muted-400">
+        <Icon className="w-3.5 h-3.5 text-accent2-600" />
+        {label}
+      </span>
+      <span className="font-medium text-text text-right truncate max-w-[55%]">{value}</span>
     </div>
   );
 }
 
 export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) {
-  const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -209,30 +248,33 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
     return d.toISOString().split('T')[0];
   }
 
-  const validateStep1 = () => {
+  // Fecha de hoy en hora local (no UTC, para no bloquear el día actual por la tarde/noche)
+  const today = (() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  })();
+
+  const validate = () => {
     const e = {};
     if (!form.origenCode) e.origen = 'Selecciona un origen';
     if (!form.destinoCode) e.destino = 'Selecciona un destino';
     if (!form.fecha_salida) e.fecha_salida = 'Selecciona fecha de salida';
+    else if (form.fecha_salida < today) e.fecha_salida = 'La fecha no puede ser anterior a hoy';
     if (form.origenCode && form.destinoCode && form.origenCode === form.destinoCode) {
       e.destino = 'El destino debe ser diferente al origen';
     }
     if (form.duracion_dias > 30) e.duracion_dias = 'Máximo 30 días';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const validateStep2 = () => {
-    const e = {};
-    if (form.presupuesto < min) {
-      e.presupuesto = `Mínimo sugerido: $${min}`;
-    }
+    if (form.presupuesto < min) e.presupuesto = `Mínimo sugerido: $${min}`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleSubmit = async () => {
-    if (!validateStep2()) return;
+    if (!validate()) {
+      // lleva al usuario al primer campo con error
+      document.querySelector('.plan-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     setSubmitting(true);
     if (onPlanLoading) onPlanLoading(true);
     try {
@@ -266,7 +308,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
       if (onPlanCreated) onPlanCreated(data);
     } catch (err) {
       const msg = err?.response?.data?.detail || err?.message || 'Error al crear el plan';
-      setErrors({ submit: msg });
+      setErrors((prev) => ({ ...prev, submit: msg }));
       if (onPlanError) onPlanError(new Error(msg));
     } finally {
       setSubmitting(false);
@@ -274,249 +316,227 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
     }
   };
 
-  const today = new Date().toISOString().split('T')[0];
-
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <StepIndicator currentStep={step} />
+    <div className="plan-form grid grid-cols-1 lg:grid-cols-[1fr_19rem] gap-6 lg:gap-8 items-start">
+      {/* Columna izquierda: formulario en secciones */}
+      <div className="bg-white rounded-2xl border border-border-100 card-shadow-lg divide-y divide-border-50">
+        {/* Sección: destino */}
+        <section className="p-6 sm:p-7">
+          <SectionHeader icon={IconMapPin} step="01" title="¿A dónde vamos?" subtitle="Elige tu punto de partida y tu destino" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <AirportInput
+              label="Origen"
+              placeholder="Ej: Bogotá, Medellín..."
+              value={form.origen}
+              onChange={(item, code) => {
+                update('origen', item);
+                update('origenCode', code);
+              }}
+            />
+            <AirportInput
+              label="Destino"
+              placeholder="Ej: Madrid, Miami..."
+              value={form.destino}
+              onChange={(item, code) => {
+                update('destino', item);
+                update('destinoCode', code);
+              }}
+            />
+          </div>
+          {errors.origen && <p className="text-xs text-error mt-2">{errors.origen}</p>}
+          {errors.destino && <p className="text-xs text-error mt-1">{errors.destino}</p>}
+        </section>
 
-      <div className="bg-white rounded-xl border border-border-100 card-shadow-lg p-6 sm:p-8">
-        {/* Step 1: Destination & Dates */}
-        <StepPanel isActive={step === 1}>
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <AirportInput
-                label="Origen"
-                placeholder="Ej: Bogotá, Medellín..."
-                value={form.origen}
-                onChange={(item, code) => {
-                  update('origen', item);
-                  update('origenCode', code);
-                }}
-              />
-              <AirportInput
-                label="Destino"
-                placeholder="Ej: Madrid, Miami..."
-                value={form.destino}
-                onChange={(item, code) => {
-                  update('destino', item);
-                  update('destinoCode', code);
-                }}
-              />
-            </div>
-            {errors.origen && <p className="text-xs text-error mt-1">{errors.origen}</p>}
-            {errors.destino && <p className="text-xs text-error mt-1">{errors.destino}</p>}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-muted-500 mb-1.5">Fecha de salida</label>
-                <input
-                  type="date"
-                  min={today}
-                  value={form.fecha_salida}
-                  onChange={(e) => update('fecha_salida', e.target.value)}
-                  className="input-field"
-                />
-                {errors.fecha_salida && <p className="text-xs text-error mt-1">{errors.fecha_salida}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-500 mb-1.5">Duración</label>
-                <select
-                  value={form.duracion_dias}
-                  onChange={(e) => update('duracion_dias', Number(e.target.value))}
-                  className="input-field"
-                >
-                  <option value={3}>3 días</option>
-                  <option value={5}>5 días</option>
-                  <option value={7}>1 semana</option>
-                  <option value={10}>10 días</option>
-                  <option value={14}>2 semanas</option>
-                </select>
-              </div>
-            </div>
-
+        {/* Sección: fechas */}
+        <section className="p-6 sm:p-7">
+          <SectionHeader icon={IconCalendar} step="02" title="¿Cuándo viajas?" subtitle="Fecha de salida, duración y cuántos van" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-muted-500 mb-1.5">Pasajeros</label>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-500 mb-1.5">
+                <IconCalendar className="w-3.5 h-3.5 text-accent2-600" />
+                Fecha de salida
+              </label>
+              <input
+                type="date"
+                min={today}
+                value={form.fecha_salida}
+                onChange={(e) => update('fecha_salida', e.target.value)}
+                className="input-field"
+              />
+              {errors.fecha_salida && <p className="text-xs text-error mt-1">{errors.fecha_salida}</p>}
+            </div>
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-500 mb-1.5">
+                <IconClock className="w-3.5 h-3.5 text-accent2-600" />
+                Duración
+              </label>
               <select
-                value={form.pasajeros}
-                onChange={(e) => update('pasajeros', Number(e.target.value))}
-                className="input-field max-w-[120px]"
+                value={form.duracion_dias}
+                onChange={(e) => update('duracion_dias', Number(e.target.value))}
+                className="input-field"
               >
-                {[...Array(9)].map((_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {i + 1} {i === 0 ? 'pasajero' : 'pasajeros'}
-                  </option>
-                ))}
+                <option value={3}>3 días</option>
+                <option value={5}>5 días</option>
+                <option value={7}>1 semana</option>
+                <option value={10}>10 días</option>
+                <option value={14}>2 semanas</option>
               </select>
             </div>
-
-            <div className="pt-4">
-              <button
-                onClick={() => validateStep1() && setStep(2)}
-                className="btn-primary w-full sm:w-auto"
-              >
-                Siguiente →
-              </button>
-            </div>
           </div>
-        </StepPanel>
+          <div className="mt-4">
+            <label className="flex items-center gap-1.5 text-sm font-medium text-muted-500 mb-1.5">
+              <IconUsers className="w-3.5 h-3.5 text-accent2-600" />
+              Pasajeros
+            </label>
+            <select
+              value={form.pasajeros}
+              onChange={(e) => update('pasajeros', Number(e.target.value))}
+              className="input-field max-w-[140px]"
+            >
+              {[...Array(9)].map((_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1} {i === 0 ? 'pasajero' : 'pasajeros'}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
 
-        {/* Step 2: Budget & Preferences */}
-        <StepPanel isActive={step === 2}>
-          <div className="space-y-6">
-            <div className="text-center mb-2">
-              <p className="text-xs text-muted-300 uppercase tracking-wider mb-1">Presupuesto total</p>
-              <p className="font-mono text-4xl sm:text-5xl font-bold text-accent">
-                ${form.presupuesto}
-              </p>
-              {loadingMinBudget && (
-                <p className="text-xs text-muted-300 mt-1">Calculando presupuesto mínimo...</p>
-              )}
-              {minBudgetData && form.presupuesto < minBudgetData.presupuesto_minimo_sugerido && (
-                <p className="text-xs text-warning mt-1">
-                  Por debajo del mínimo sugerido (${minBudgetData.presupuesto_minimo_sugerido})
-                </p>
-              )}
-              {minBudgetData && form.presupuesto >= minBudgetData.presupuesto_minimo_sugerido && (
-                <p className="text-xs text-success mt-1">
-                  ✓ Presupuesto suficiente
-                </p>
-              )}
-            </div>
+        {/* Sección: presupuesto */}
+        <section className="p-6 sm:p-7">
+          <SectionHeader icon={IconWallet} step="03" title="¿Cuánto quieres gastar?" subtitle="Ajusta el total y lo hacemos rendir al máximo" />
+          <BudgetSlider
+            value={form.presupuesto}
+            min={Math.floor(min / 10) * 10}
+            max={Math.ceil(max / 10) * 10}
+            suggested={minBudgetData?.presupuesto_minimo_sugerido || min}
+            onChange={(v) => update('presupuesto', v)}
+          />
+          {errors.presupuesto && <p className="text-xs text-error mt-1">{errors.presupuesto}</p>}
+        </section>
 
-            <BudgetSlider
-              value={form.presupuesto}
-              min={Math.floor(min / 10) * 10}
-              max={Math.ceil(max / 10) * 10}
-              suggested={minBudgetData?.presupuesto_minimo_sugerido || min}
-              onChange={(v) => update('presupuesto', v)}
-            />
-            {errors.presupuesto && <p className="text-xs text-error">{errors.presupuesto}</p>}
-
-            <div>
-              <label className="block text-sm font-medium text-muted-500 mb-3">Tipo de viaje</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {TIERS.map((tier) => {
-                  const active = form.tier === tier.key;
-                  return (
-                    <button
-                      key={tier.key}
-                      type="button"
-                      onClick={() => update('tier', tier.key)}
-                      className={`relative rounded-xl border-2 p-4 text-left transition-all duration-200 ease-smooth ${
-                        active
-                          ? 'border-accent bg-accent/5 card-shadow-md'
-                          : 'border-border-100 bg-white hover:border-border-300 hover:card-shadow'
-                      }`}
+        {/* Sección: estilo */}
+        <section className="p-6 sm:p-7">
+          <SectionHeader icon={IconStar} step="04" title="Estilo de viaje" subtitle="Define la comodidad y qué incluye tu plan" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {TIERS.map((tier) => {
+              const active = form.tier === tier.key;
+              return (
+                <button
+                  key={tier.key}
+                  type="button"
+                  onClick={() => update('tier', tier.key)}
+                  className={`relative rounded-xl border-2 p-4 text-left transition-all duration-200 ease-smooth ${
+                    active
+                      ? 'border-accent bg-accent/5 card-shadow-md'
+                      : 'border-border-100 bg-white hover:border-border-300 hover:card-shadow'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <span
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: TIER_METAL[tier.key].tint }}
                     >
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-lg">{tier.icon}</span>
-                        <span className={`font-semibold text-sm ${active ? 'text-accent' : 'text-text'}`}>
-                          {tier.label}
-                        </span>
-                      </div>
-                      <div className="flex gap-0.5 mb-2">
-                        {[...Array(5)].map((_, i) => (
-                          <span
-                            key={i}
-                            className={`text-xs ${i < tier.stars ? 'text-warning' : 'text-border-200'}`}
-                          >
-                            ★
-                          </span>
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted-300 leading-relaxed">{tier.desc}</p>
-                      {active && (
-                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
-                          <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M2.5 6 L5 8.5 L9.5 3" />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-6">
-              <label className="flex items-center gap-2.5 cursor-pointer group">
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 ${
-                  form.incluir_hotel
-                    ? 'bg-accent border-accent'
-                    : 'border-border-300 group-hover:border-accent/50'
-                }`}>
-                  {form.incluir_hotel && (
-                    <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 6 L5 9 L10 3" />
-                    </svg>
+                      <MetallicTierIcon tier={tier.key} className="w-4 h-4" />
+                    </span>
+                    <span className={`font-semibold text-sm ${active ? 'text-accent' : 'text-text'}`}>
+                      {tier.label}
+                    </span>
+                  </div>
+                  <div className="mb-2">
+                    <IconStarRow count={tier.stars} />
+                  </div>
+                  <p className="text-xs text-muted-300 leading-relaxed">{tier.desc}</p>
+                  {active && (
+                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
+                      <IconCheck className="w-3 h-3 text-white" />
+                    </div>
                   )}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={form.incluir_hotel}
-                  onChange={(e) => update('incluir_hotel', e.target.checked)}
-                  className="sr-only"
-                />
-                <span className="text-sm text-muted-400 group-hover:text-text transition-colors">Incluir hotel</span>
-              </label>
+                </button>
+              );
+            })}
+          </div>
 
-              <label className="flex items-center gap-2.5 cursor-pointer group">
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 ${
-                  form.incluir_vehiculo
-                    ? 'bg-accent border-accent'
-                    : 'border-border-300 group-hover:border-accent/50'
-                }`}>
-                  {form.incluir_vehiculo && (
-                    <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 6 L5 9 L10 3" />
-                    </svg>
-                  )}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={form.incluir_vehiculo}
-                  onChange={(e) => update('incluir_vehiculo', e.target.checked)}
-                  className="sr-only"
-                />
-                <span className="text-sm text-muted-400 group-hover:text-text transition-colors">Incluir vehículo</span>
-              </label>
-            </div>
-
-            {errors.submit && (
-              <div className="p-3 rounded-lg bg-error/5 border border-error/20 text-sm text-error">
-                {errors.submit}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={() => setStep(1)}
-                className="btn-outline"
-              >
-                ← Atrás
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="btn-primary flex-1 sm:flex-none"
-              >
-                {submitting ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.2" />
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                    </svg>
-                    Armando plan...
-                  </span>
-                ) : (
-                  'Armar mi plan →'
-                )}
-              </button>
+          <div className="mt-5">
+            <label className="block text-sm font-medium text-muted-500 mb-3">¿Qué incluye tu viaje?</label>
+            <div className="flex flex-wrap gap-3">
+              <IncludeToggle
+                active={form.incluir_hotel}
+                icon={IconHotel}
+                label="Incluir hotel"
+                onClick={() => update('incluir_hotel', !form.incluir_hotel)}
+              />
+              <IncludeToggle
+                active={form.incluir_vehiculo}
+                icon={IconCar}
+                label="Incluir vehículo"
+                onClick={() => update('incluir_vehiculo', !form.incluir_vehiculo)}
+              />
             </div>
           </div>
-        </StepPanel>
+        </section>
+
+        {/* Envío */}
+        <section className="p-6 sm:p-7">
+          {errors.submit && (
+            <div className="mb-4 p-3 rounded-lg bg-error/5 border border-error/20 text-sm text-error">
+              {errors.submit}
+            </div>
+          )}
+          {/* En móvil, el panel "Tu plan" aparece aquí, encima del botón */}
+          <div className="lg:hidden mb-5">
+            <LivePlanPanel form={form} minBudgetData={minBudgetData} loadingMinBudget={loadingMinBudget} noches={form.duracion_dias} />
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="btn-primary w-full text-base py-3.5"
+          >
+            {submitting ? (
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.2" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Armando plan...
+              </span>
+            ) : (
+              'Armar mi plan →'
+            )}
+          </button>
+        </section>
       </div>
+
+      {/* Columna derecha: panel en vivo (solo desktop, sticky) */}
+      <aside className="hidden lg:block lg:sticky lg:top-24">
+        <LivePlanPanel form={form} minBudgetData={minBudgetData} loadingMinBudget={loadingMinBudget} noches={form.duracion_dias} />
+      </aside>
     </div>
+  );
+}
+
+function IncludeToggle({ active, icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      onClick={onClick}
+      className={`group relative flex items-center gap-2.5 pl-3 pr-4 py-2.5 rounded-xl border-2 transition-all duration-200 ease-smooth ${
+        active ? 'border-accent bg-accent/5' : 'border-border-100 bg-white hover:border-border-300'
+      }`}
+    >
+      <span className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200 ${
+        active ? 'bg-accent text-white' : 'bg-border-50 text-muted-300'
+      }`}>
+        <Icon className="w-4 h-4" />
+      </span>
+      <span className={`text-sm font-medium ${active ? 'text-accent' : 'text-muted-400'}`}>{label}</span>
+      {active && (
+        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
+          <IconCheck className="w-2.5 h-2.5 text-white" />
+        </span>
+      )}
+    </button>
   );
 }

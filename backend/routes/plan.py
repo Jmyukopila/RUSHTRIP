@@ -81,7 +81,7 @@ class PlanRequest(BaseModel):
             raise ValueError("Fecha inválida")
         return v
 
-        model_config = {
+    model_config = {
         "json_schema_extra": {
             "example": {
                 "origen":           "Bogotá",

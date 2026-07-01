@@ -223,17 +223,28 @@ async def buscar_coches(
     if dropoff_date:
         params["drop_off_date"] = dropoff_date
 
+    keys = settings.rapidapi_keys
+    if not keys:
+        return _generar_fallback(iata, pickup_date, dropoff_date)
+
     try:
         # Llamada a la API de Booking.com via RapidAPI
-        res = await http_client.get(
-            "https://booking-com15.p.rapidapi.com/api/v1/cars/searchCarRentals",
-            params=params,
-            headers={
-                "x-rapidapi-key": settings.rapidapi_key,
-                "x-rapidapi-host": settings.rapidapi_host,
-                "Content-Type": "application/json",
-            },
-        )
+        # (soporte multi-key con rotación en 401/403/429)
+        res = None
+        for i, key in enumerate(keys):
+            res = await http_client.get(
+                "https://booking-com15.p.rapidapi.com/api/v1/cars/searchCarRentals",
+                params=params,
+                headers={
+                    "x-rapidapi-key": key,
+                    "x-rapidapi-host": settings.rapidapi_host,
+                    "Content-Type": "application/json",
+                },
+            )
+            if res.status_code in (401, 403, 429) and i < len(keys) - 1:
+                logger.warning(f"Key RapidAPI #{i + 1} respondió HTTP {res.status_code}, rotando a la siguiente")
+                continue
+            break
         res.raise_for_status()
         data = res.json()
 

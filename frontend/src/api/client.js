@@ -55,6 +55,11 @@ export async function searchHotels(params) {
   return response.data;
 }
 
+export async function getHotelDetail(params) {
+  const response = await api.get('/hotels/detalle', { params });
+  return response.data;
+}
+
 export async function searchAirports(params) {
   const response = await api.get('/airports/', { params });
   return response.data;

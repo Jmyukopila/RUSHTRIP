@@ -3,6 +3,10 @@ const BADGE_CONFIG = {
     label: 'Precios exactos',
     className: 'bg-success/15 text-success border border-success/20',
   },
+  real: {
+    label: 'Precios reales',
+    className: 'bg-success/15 text-success border border-success/20',
+  },
   mes: {
     label: 'Precios del mes',
     className: 'bg-warning/15 text-warning border border-warning/20',

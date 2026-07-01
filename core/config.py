@@ -17,10 +17,22 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    travelpayouts_token:  str = ""
-    travelpayouts_marker: str = ""
+    travelpayouts_token:    str = ""
+    travelpayouts_token_2:  str = ""
+    travelpayouts_token_3:  str = ""
+    travelpayouts_marker:   str = ""
+
+    # Prefijo del link de afiliado de Travelpayouts para hoteles (programa por decidir).
+    # Es el link generado en tu panel de Travelpayouts SIN el parametro final `&u=...`,
+    # p.ej: https://tp.media/r?marker=723238&trs=<proj>&p=<prog>&campaign_id=<camp>
+    # En runtime se le agrega `&u=<url-del-hotel>` para deep-linkear a cada hotel.
+    # VACIO (default en desarrollo) => el boton cae a Booking.com directo, sin afiliacion.
+    # Se activa al ir a produccion, cuando el sitio este en vivo y aprobado por un programa.
+    travelpayouts_hotel_link: str = ""
 
     rapidapi_key:         str = ""
+    rapidapi_key_2:       str = ""
+    rapidapi_key_3:       str = ""
     rapidapi_host:        str = "booking-com15.p.rapidapi.com"
 
     pexels_api_key:       str = ""
@@ -35,28 +47,14 @@ class Settings(BaseSettings):
     @property
     def travelpayouts_tokens(self) -> List[str]:
         """Retorna todas las keys de Travelpayouts disponibles."""
-        tokens = []
-        if self.travelpayouts_token:
-            tokens.append(self.travelpayouts_token)
-        for i in range(2, 10):
-            key = getattr(self, f"travelpayouts_token_{i}", None) or \
-                  getattr(self, f"travelpayouts_token_{i}", "")
-            if key:
-                tokens.append(key)
-        return tokens
+        candidatos = [self.travelpayouts_token, self.travelpayouts_token_2, self.travelpayouts_token_3]
+        return [t for t in candidatos if t]
 
     @property
     def rapidapi_keys(self) -> List[str]:
         """Retorna todas las keys de RapidAPI disponibles."""
-        keys = []
-        if self.rapidapi_key:
-            keys.append(self.rapidapi_key)
-        for i in range(2, 10):
-            key = getattr(self, f"rapidapi_key_{i}", None) or \
-                  getattr(self, f"rapidapi_key_{i}", "")
-            if key:
-                keys.append(key)
-        return keys
+        candidatos = [self.rapidapi_key, self.rapidapi_key_2, self.rapidapi_key_3]
+        return [k for k in candidatos if k]
 
 
 settings = Settings()

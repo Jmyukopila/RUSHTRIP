@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { IconWarning, IconSparkle } from './icons';
 
 export default function SearchWidget() {
   const [status, setStatus] = useState('loading');
@@ -113,8 +114,9 @@ export default function SearchWidget() {
           <div className="w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin mb-4" />
           <p className="text-sm text-muted animate-pulse">Cargando buscador...</p>
           {isLocalhost && (
-            <p className="text-xs text-warning/70 mt-3 max-w-sm text-center">
-              ⚠️ Estás en localhost. Algunos widgets externos solo se activan en dominio público.
+            <p className="flex items-start gap-1.5 text-xs text-warning/70 mt-3 max-w-sm text-left mx-auto">
+              <IconWarning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Estás en localhost. Algunos widgets externos solo se activan en dominio público.
               Puede que veas el mensaje de error aunque funcione en producción.
             </p>
           )}
@@ -132,8 +134,9 @@ export default function SearchWidget() {
             </p>
           )}
           {isLocalhost && (
-            <p className="text-xs text-warning/70 mb-4 max-w-sm mx-auto">
-              ⚠️ Los widgets de Travelpayouts suelen bloquear localhost.
+            <p className="flex items-start gap-1.5 text-xs text-warning/70 mb-4 max-w-sm mx-auto text-left">
+              <IconWarning className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              Los widgets de Travelpayouts suelen bloquear localhost.
               Sube el proyecto a un dominio público para que funcione.
             </p>
           )}
@@ -160,7 +163,7 @@ export default function SearchWidget() {
 
       <div id="tpwl-search" className="min-h-[120px]" />
       <div className="separator my-6">
-        <span className="text-accent2 text-xs">✦</span>
+        <IconSparkle className="w-3 h-3 text-accent2" />
       </div>
       <div id="tpwl-tickets" className="min-h-[120px]" />
     </div>

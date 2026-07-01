@@ -2,6 +2,8 @@
 # API endpoint para el clima del destino
 # Valida fechas y delega al servicio de clima (Open-Meteo)
 
+import re
+
 from fastapi import APIRouter, HTTPException
 from services.weather import obtener_clima
 from datetime import datetime
@@ -25,6 +27,7 @@ router = APIRouter(
     - **ciudad**: Nombre de la ciudad (ej: Madrid, Bogotá, Miami)
     - **fecha_inicio**: Primer día en formato YYYY-MM-DD
     - **fecha_fin**: Último día en formato YYYY-MM-DD
+    - **iata**: Código IATA del aeropuerto de destino (opcional, mejora la resolución de coordenadas)
 
     Si las fechas están dentro del horizonte de pronóstico (~16 días),
     devuelve pronóstico real (precision 'pronostico'). Para fechas más
@@ -38,6 +41,7 @@ async def get_weather(
     ciudad: str,
     fecha_inicio: str,
     fecha_fin: str,
+    iata: str | None = None,
 ):
     """
     Endpoint para consultar el clima de un destino.
@@ -46,6 +50,7 @@ async def get_weather(
         ciudad: Nombre de la ciudad
         fecha_inicio: Primer día (YYYY-MM-DD)
         fecha_fin: Último día (YYYY-MM-DD)
+        iata: Código IATA del aeropuerto de destino (opcional)
 
     Returns:
         Dict con 'ciudad', 'dias' (lista), 'precision' y 'aviso'
@@ -75,8 +80,14 @@ async def get_weather(
             detail="El rango máximo es de 31 días"
         )
 
+    if iata and not re.fullmatch(r"[A-Za-z]{3}", iata):
+        raise HTTPException(
+            status_code=422,
+            detail="El código IATA debe tener 3 letras"
+        )
+
     # Delegar al servicio de clima (degrada a aviso si no hay datos)
-    resultado = await obtener_clima(ciudad, fecha_inicio, fecha_fin)
+    resultado = await obtener_clima(ciudad, fecha_inicio, fecha_fin, iata=iata)
     if resultado is None:
         return {
             "aviso": "No pudimos obtener el clima para este destino en este momento.",
