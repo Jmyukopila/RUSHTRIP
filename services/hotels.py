@@ -5,11 +5,13 @@
 import logging
 import re
 from datetime import date
+from urllib.parse import quote
 from core.config import settings
 from core.http import http_client
 from core.database_cache import cache_get, cache_get_stale, cache_set
 from core.cache import TTLCache
 from services.hotels_nl import buscar_hoteles as buscar_hoteles_nl
+from services.hotels_nl import obtener_detalle as obtener_detalle_nl
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ def _estimar_hoteles(ciudad: str, checkin: str, checkout: str, adultos: int, iat
             "noches": noches,
             "adultos": adultos,
             "moneda": "USD",
-            "link_reserva": f"https://www.booking.com/searchresults.html?ss={ciudad.replace(' ', '+')}&checkin={checkin}&checkout={checkout}&group_adults={adultos}&selected_currency=USD",
+            "link_reserva": _link_reserva_tp(nombre, ciudad, checkin, checkout, adultos),
             "por_que": "Precio estimado basado en tarifas promedio de la zona.",
             "tipo": "estimado",
             "amenities": [],
@@ -117,12 +119,28 @@ def _precio_referencia(ciudad: str) -> float:
     return PRECIO_REFERENCIA_HOTEL.get(ciudad.upper(), PRECIO_REFERENCIA_HOTEL["_default"])
 
 
-def _link_hotelsnl(hotel: dict, checkin: str, checkout: str, adultos: int) -> str:
-    """Genera link de reserva a Hotels.nl."""
-    nombre = hotel.get("nombre", "")
-    ciudad = hotel.get("ciudad", "")
-    q = f"{nombre} {ciudad}".replace(" ", "+")
-    return f"https://hotels.nl/search?q={q}&checkin={checkin}&checkout={checkout}&persons={adultos}"
+def _link_reserva_tp(nombre: str, ciudad: str, checkin: str, checkout: str, adultos: int) -> str:
+    """
+    Genera el link de reserva del hotel concreto.
+
+    Construye un deep-link a Booking.com (nombre exacto + ciudad + fechas +
+    ocupacion) que aterriza en/junto a la ficha del hotel con las fechas ya
+    cargadas. Si hay un prefijo de afiliado configurado
+    (settings.travelpayouts_hotel_link), lo envuelve (+ '&u=<destino>') para
+    generar comision. En desarrollo el prefijo esta vacio => Booking.com directo,
+    sin afiliacion (no requiere aprobacion ni cuenta de programa).
+    """
+    consulta = f"{nombre} {ciudad}".strip()
+    destino = (
+        "https://www.booking.com/searchresults.html?"
+        f"ss={quote(consulta)}&checkin={checkin}&checkout={checkout}"
+        f"&group_adults={adultos}&selected_currency=USD"
+    )
+    prefijo = settings.travelpayouts_hotel_link.strip()
+    if prefijo:
+        sep = "&" if "?" in prefijo else "?"
+        return f"{prefijo}{sep}u={quote(destino, safe='')}"
+    return destino
 
 
 def _slug_hotel(nombre: str) -> str:
@@ -150,7 +168,11 @@ async def _enriquecer_con_fotos(ciudad: str, hoteles: list) -> list:
             logger.warning(f"Pexels API fallo para '{ciudad}': {e}")
             fotos = []
     for h in hoteles:
-        h["foto_url"] = fotos[0] if fotos else f"https://placehold.co/600x400?text={h['nombre'].replace(' ', '+')}"
+        # Preservar la imagen real propia del hotel (Hotels.nl); solo los hoteles
+        # estimados reciben las fotos de stock de la ciudad de Pexels.
+        if h.get("tipo") == "real" and h.get("foto_url"):
+            continue
+        h["foto_url"] = fotos[0] if fotos else f"https://placehold.co/600x400?text={quote(h['nombre'])}"
         h["fotos_urls"] = fotos if fotos else []
     return hoteles
 
@@ -179,8 +201,6 @@ async def _buscar_ciudad(ciudad: str) -> dict | None:
 
 def _generar_hoteles_afiliados(
     ciudad: str,
-    codigo: str,
-    pais: str,
     checkin: str,
     checkout: str,
     adultos: int,
@@ -188,12 +208,6 @@ def _generar_hoteles_afiliados(
     precio_noche: float,
 ) -> list[dict]:
     """Genera hoteles con precios de referencia + links de afiliado Booking/KKday/Klook."""
-    base_booking = (
-        f"https://www.booking.com/searchresults.html?"
-        f"ss={ciudad.replace(' ', '+')}&checkin={checkin}"
-        f"&checkout={checkout}&group_adults={adultos}&selected_currency=USD"
-    )
-
     categorias = [
         ("Hotel Céntrico", 3, 7.5, "Bien", 50, 0.9),
         ("Hotel Boutique", 4, 8.0, "Muy bien", 100, 1.0),
@@ -219,7 +233,7 @@ def _generar_hoteles_afiliados(
             "noches": noches,
             "adultos": adultos,
             "moneda": "USD",
-            "link_reserva": base_booking,
+            "link_reserva": _link_reserva_tp(full_name, ciudad, checkin, checkout, adultos),
             "link_kkday": f"https://kkday.tpo.li/zHk5IFqZ?dest={ciudad.lower().replace(' ', '-')}",
             "link_klook": f"https://klook.tpo.li/GBfSCVf0?dest={ciudad.lower().replace(' ', '-')}",
             "por_que": "Precio de referencia basado en tarifas promedio de la zona.",
@@ -271,6 +285,7 @@ async def buscar_hoteles(
             "aviso": cached.get("aviso"),
             "ciudad": cached.get("ciudad", ciudad),
             "hoteles": hoteles,
+            "precision": cached.get("precision", "estimada"),
         }
 
     nombre_ciudad = ciudad
@@ -290,9 +305,11 @@ async def buscar_hoteles(
             hoteles = hoteles_nl
             if hoteles:
                 nombre_ciudad = hoteles[0].get("ciudad", ciudad)
-            # Asignar link de reserva a Hotels.nl
+            # Asignar link de reserva (Travelpayouts -> Booking.com del hotel concreto)
             for h in hoteles:
-                h["link_reserva"] = _link_hotelsnl(h, checkin, checkout, adultos)
+                h["link_reserva"] = _link_reserva_tp(
+                    h.get("nombre", ""), h.get("ciudad", nombre_ciudad), checkin, checkout, adultos
+                )
 
     # Nivel 2: Fallback a Travelpayouts + precios de referencia
     if hoteles is None:
@@ -300,11 +317,10 @@ async def buscar_hoteles(
         city_info = await _buscar_ciudad(ciudad)
         nombre_ciudad = city_info["nombre"] if city_info else ciudad
         codigo = city_info["codigo"] if city_info else ""
-        pais = city_info["pais"] if city_info else ""
         noches = _calcular_noches(checkin, checkout)
         precio_noche = _precio_referencia(codigo) if codigo else _precio_referencia(ciudad)
         hoteles = _generar_hoteles_afiliados(
-            nombre_ciudad, codigo, pais, checkin, checkout, adultos, noches, precio_noche
+            nombre_ciudad, checkin, checkout, adultos, noches, precio_noche
         )
 
     hoteles = await _enriquecer_con_fotos(nombre_ciudad, hoteles)
@@ -331,4 +347,60 @@ async def buscar_hoteles(
     }
 
     cache_set(cache_key, resultado, provider="hotelsnl" if es_real else "travelpayouts", ttl_seconds=_CACHE_TTL)
+    return resultado
+
+
+async def detalle_hotel(hotel_id: str, checkin: str, checkout: str, adultos: int = 2, ciudad: str = "") -> dict:
+    """
+    Detalle de un hotel real (Hotels.nl): galeria completa de fotos + habitaciones
+    con precio y link de reserva. Pensado para carga on-demand desde el frontend.
+
+    Returns:
+        Dict con 'fotos_urls', 'habitaciones' (cada una con 'link_reserva'),
+        'descripcion' y 'precision'. Degrada con 'aviso' si no hay datos reales.
+    """
+    cache_key = f"detalle:{hotel_id}:{checkin}:{checkout}:{adultos}"
+
+    cached = cache_get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit para detalle hotel: {cache_key}")
+        return cached
+
+    detalle = await obtener_detalle_nl(
+        hotel_id=hotel_id,
+        checkin=checkin,
+        checkout=checkout,
+        persons=adultos,
+        currency="USD",
+    )
+
+    if detalle is None:
+        return {
+            "aviso": "No pudimos cargar el detalle de este hotel en este momento.",
+            "fotos_urls": [],
+            "habitaciones": [],
+            "descripcion": "",
+            "precision": "estimada",
+        }
+
+    nombre = detalle.get("nombre", "")
+    # Link de reserva por habitacion (Travelpayouts -> Booking.com del hotel concreto)
+    for hab in detalle.get("habitaciones", []):
+        hab["link_reserva"] = _link_reserva_tp(nombre, ciudad, checkin, checkout, adultos)
+
+    # Si Hotels.nl no trajo fotos, completar con fotos de la ciudad (Pexels)
+    if not detalle.get("fotos_urls"):
+        placeholder = [{"nombre": nombre, "tipo": "real", "foto_url": ""}]
+        enriquecidos = await _enriquecer_con_fotos(ciudad or nombre, placeholder)
+        detalle["fotos_urls"] = enriquecidos[0].get("fotos_urls", [])
+
+    resultado = {
+        "nombre": nombre,
+        "descripcion": detalle.get("descripcion", ""),
+        "fotos_urls": detalle.get("fotos_urls", []),
+        "habitaciones": detalle.get("habitaciones", []),
+        "precision": "real",
+    }
+
+    cache_set(cache_key, resultado, provider="hotelsnl", ttl_seconds=_CACHE_TTL)
     return resultado

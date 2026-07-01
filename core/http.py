@@ -15,20 +15,6 @@ _BASE_DELAY = 0.5  # segundos iniciales de backoff
 http_client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
 
 
-def get_client(timeout: float = _DEFAULT_TIMEOUT) -> httpx.AsyncClient:
-    """
-    Devuelve un cliente HTTP con timeout configurable.
-    Util para endpoints que necesitan mas tiempo de espera.
-
-    Args:
-        timeout: Tiempo maximo de espera en segundos (default: 10)
-
-    Returns:
-        Instancia de AsyncClient configurada
-    """
-    return httpx.AsyncClient(timeout=timeout)
-
-
 async def request_with_retry(
     method: str,
     url: str,

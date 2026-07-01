@@ -40,8 +40,10 @@ AEROPUERTO_COORDS: dict[str, tuple[float, float]] = {
 # Factor de emision: kg CO2 por pasajero-km (promedio vuelos comerciales)
 _CO2_KG_PER_PAX_KM = 0.115
 
-# Cache TTL en segundos (6 horas)
+# Cache TTL en segundos (6 horas para datos reales de API)
 _CACHE_TTL = 6 * 3600
+# TTL corto para datos estimados: permite reintentar la API real pronto
+_CACHE_TTL_ESTIMADO = 600
 
 # Lista de aerolíneas preferidas para usar en vuelos estimados (las más comunes)
 _AEROLINEAS_ESTIMADAS = ["AV", "AA", "LA", "CM", "UA", "DL", "IB", "B6", "AF", "KL"]
@@ -311,7 +313,7 @@ async def buscar_vuelos(
         # Nivel 4: Fallback a datos estimados locales
         logger.warning(f"API de vuelos no disponible para {origen}→{destino}, usando datos estimados")
         estimados = _estimar_vuelo(origen, destino, fecha_salida, fecha_regreso, pasajeros)
-        cache_set(key, estimados, provider="reference", ttl_seconds=_CACHE_TTL)
+        cache_set(key, estimados, provider="reference", ttl_seconds=_CACHE_TTL_ESTIMADO)
         return estimados
 
     except Exception as e:
@@ -338,16 +340,14 @@ async def _buscar(
     Acepta fechas exactas (YYYY-MM-DD) o por mes (YYYY-MM).
     Si fecha_salida es None, busca próximos disponibles sin filtro.
     """
-    # Elegir token (soporte multi-key)
+    # Tokens disponibles (soporte multi-key con rotación en 401/403/429)
     tokens = settings.travelpayouts_tokens
-    if not tokens or not tokens[0]:
+    if not tokens:
         return {"aviso": None, "vuelos": [], "error": "No hay token de Travelpayouts configurado"}
 
-    token = tokens[0]
     params = {
         "origin":      origen.upper(),
         "destination": destino.upper(),
-        "token":       token,
         "currency":    "USD",
         "sorting":     "price",
         "limit":       15,
@@ -359,10 +359,16 @@ async def _buscar(
         params["return_at"] = fecha_regreso
 
     try:
-        res = await http_client.get(
-            "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
-            params=params,
-        )
+        res = None
+        for i, token in enumerate(tokens):
+            res = await http_client.get(
+                "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
+                params={**params, "token": token},
+            )
+            if res.status_code in (401, 403, 429) and i < len(tokens) - 1:
+                logger.warning(f"Token Travelpayouts #{i + 1} respondió HTTP {res.status_code}, rotando al siguiente")
+                continue
+            break
         res.raise_for_status()
         data = res.json()
 

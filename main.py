@@ -37,8 +37,8 @@ app = FastAPI(
 
     Características:
     - Búsqueda de vuelos con fallback inteligente (Aviasales/Travelpayouts)
-    - Búsqueda de hoteles con links a Booking.com
-    - Alquiler de coches via Booking.com (RapidAPI)
+    - Búsqueda de hoteles reales (Hotels.nl) con fotos y links de reserva
+    - Alquiler de coches (RapidAPI) con fallback a Localrent/EconomyBookings
     - Búsqueda de aeropuertos y ciudades
     - Plan de viaje optimizado por presupuesto
     """,
@@ -63,11 +63,11 @@ app = FastAPI(
         },
         {
             "name":        "Hoteles",
-            "description": "Busqueda de hoteles con links directos a Booking.com"
+            "description": "Busqueda de hoteles reales (Hotels.nl) con fotos y links de reserva"
         },
         {
             "name":        "Coches",
-            "description": "Busqueda de alquiler de coches via Booking.com"
+            "description": "Busqueda de alquiler de coches (RapidAPI / Localrent)"
         },
         {
             "name":        "Aeropuertos",
@@ -127,6 +127,13 @@ from core.rate_limiter import check_rate_limit, get_remaining
 async def rate_limit_middleware(request: Request, call_next):
     path = request.url.path
     if path in ("/health", "/", "/docs", "/openapi.json"):
+        return await call_next(request)
+
+    # En desarrollo (DEBUG=true) no se aplica rate limiting: en local todo llega
+    # desde 127.0.0.1 y unas decenas de pruebas agotan el cupo diario, devolviendo
+    # 429 y rompiendo la app. Producción DEBE correr con DEBUG=false para mantener
+    # la protección diaria por IP.
+    if settings.debug:
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"

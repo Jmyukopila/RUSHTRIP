@@ -132,6 +132,108 @@ async def buscar_hoteles(
         return None
 
 
+async def obtener_detalle(
+    hotel_id: int | str,
+    checkin: str,
+    checkout: str,
+    persons: int = 2,
+    currency: str = "USD",
+    language: str = "es",
+    residency: str = "co",
+) -> Optional[dict]:
+    """
+    Obtiene el detalle completo de un hotel via Hotels.nl /api/hotel.php:
+    galeria de imagenes + todas las habitaciones/tarifas disponibles.
+
+    Returns:
+        Dict normalizado {nombre, descripcion, fotos_urls, habitaciones}, o None si falla.
+    """
+    api_key = settings.hotelsnl_api_key
+    if not api_key:
+        return None
+
+    try:
+        hid = int(hotel_id)
+    except (ValueError, TypeError):
+        logger.warning(f"Hotels.nl detalle: id invalido '{hotel_id}'")
+        return None
+
+    try:
+        res = await request_with_retry(
+            "POST",
+            f"{API_BASE}/hotel.php",
+            provider="hotelsnl",
+            json={
+                "apikey": api_key,
+                "id": hid,
+                "checkin": checkin,
+                "checkout": checkout,
+                "persons": persons,
+                "currency": currency,
+                "language": language,
+                "residency": residency,
+            },
+        )
+
+        if res.status_code in (403, 429):
+            logger.warning(f"Hotels.nl hotel.php status {res.status_code} para id {hid}")
+            return None
+
+        res.raise_for_status()
+        data = res.json()
+
+        # Galeria de imagenes (array de {url, category})
+        fotos_urls = [img.get("url") for img in data.get("images", []) if img.get("url")]
+
+        # Descripcion (array de {title, text})
+        descripciones = data.get("descriptions", [])
+        descripcion = descripciones[0].get("text", "") if descripciones else ""
+
+        # Habitaciones: por cada room, su tarifa mas barata
+        habitaciones = []
+        for room in data.get("rooms", []):
+            rates = room.get("rates", [])
+            if not rates:
+                continue
+            mejor = min(rates, key=lambda r: _to_float(r.get("pricing", {}).get("total_price")))
+            pricing = mejor.get("pricing", {})
+            total = _to_float(pricing.get("total_price"))
+            noche = _to_float(pricing.get("price_per_night")) or _to_float(pricing.get("average_per_night"))
+            habitaciones.append({
+                "nombre": room.get("room_name", "") or room.get("room_type", "Habitación"),
+                "capacidad": room.get("capacity"),
+                "cama": room.get("bedding", ""),
+                "comida": mejor.get("meal", ""),
+                "reembolsable": mejor.get("refundable"),
+                "precio_total": round(total, 2),
+                "precio_noche": round(noche, 2) if noche else None,
+                "moneda": pricing.get("currency", currency),
+                "hotelsnl_hash": mejor.get("hotelsnl_hash", ""),
+            })
+
+        # Ordenar habitaciones por precio ascendente
+        habitaciones.sort(key=lambda h: h.get("precio_total") or 0)
+
+        return {
+            "nombre": data.get("name", ""),
+            "descripcion": descripcion,
+            "fotos_urls": fotos_urls,
+            "habitaciones": habitaciones,
+        }
+
+    except Exception as e:
+        logger.warning(f"Hotels.nl hotel.php error para id {hotel_id}: {e}")
+        return None
+
+
+def _to_float(value) -> float:
+    """Convierte un valor a float de forma segura (0.0 si falla)."""
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def _stars_to_rating(stars: int) -> float:
     """Convierte estrellas a rating aproximado."""
     mapping = {0: 0, 1: 5.5, 2: 6.0, 3: 7.0, 4: 8.0, 5: 9.0}

@@ -1,19 +1,25 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useScrollReveal } from '../hooks/useScrollReveal';
 import SearchWidget from '../components/SearchWidget';
 import HowItWorks from '../components/HowItWorks';
+import PopularDestinations from '../components/PopularDestinations';
+import { IconIsland, IconCheck, IconPlane, IconStar } from '../components/icons';
 
 function TrustStats() {
+  const stats = [
+    { number: '50+', label: 'Destinos' },
+    { number: '15K', label: 'Planes creados' },
+    { number: '4.8', label: 'Valoración', icon: IconStar },
+  ];
   return (
     <div className="flex flex-wrap items-center gap-8 sm:gap-12 mt-10 pt-8 border-t border-border-100">
-      {[
-        { number: '50+', label: 'Destinos' },
-        { number: '15K', label: 'Planes creados' },
-        { number: '4.8', label: 'Valoración' },
-      ].map((stat) => (
+      {stats.map((stat) => (
         <div key={stat.label} className="flex items-baseline gap-2">
-          <span className="font-display text-2xl sm:text-3xl text-text">{stat.number}</span>
+          <span className="flex items-center gap-1 font-display text-2xl sm:text-3xl text-text">
+            {stat.number}
+            {stat.icon && <stat.icon className="w-4 h-4 text-warning" />}
+          </span>
           <span className="text-sm text-muted-400">{stat.label}</span>
         </div>
       ))}
@@ -21,21 +27,109 @@ function TrustStats() {
   );
 }
 
+// Collage fotográfico del hero: foto grande de destino + mini tarjeta de vuelo
+// flotante, para transmitir "viaje real" en el primer vistazo.
+function HeroCollage() {
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <div className="relative w-72 sm:w-80 lg:w-[26rem] select-none">
+      <div className="absolute inset-0 bg-gradient-radial from-accent/10 to-transparent rounded-full blur-2xl scale-110" />
+
+      <div className="relative rounded-3xl overflow-hidden aspect-[4/5] card-shadow-xl rotate-[2deg] border-4 border-white">
+        {!imgError ? (
+          <img
+            src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=70"
+            alt="Playa paradisíaca al atardecer"
+            className="w-full h-full object-cover animate-kenburns"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-accent/20 via-card to-accent2/30 flex items-center justify-center text-accent">
+            <IconIsland className="w-20 h-20" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-text/60 via-transparent to-transparent" />
+        <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-2">
+          <div>
+            <p className="text-white font-display text-xl leading-tight drop-shadow">Bali, Indonesia</p>
+            <p className="text-white/80 text-xs mt-0.5">7 noches · vuelo + hotel</p>
+          </div>
+          <span className="font-mono text-sm font-bold text-white bg-accent/90 px-2.5 py-1 rounded-lg shadow-lg shrink-0">
+            $780
+          </span>
+        </div>
+      </div>
+
+      {/* Mini pase de abordar flotante */}
+      <div className="absolute -top-5 -left-6 sm:-left-10 glass-strong rounded-2xl px-4 py-3 card-shadow-lg rotate-[-4deg] animate-fade-slide-up" style={{ animationDelay: '400ms', animationFillMode: 'both' }}>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-sm font-bold text-text">BOG</span>
+          <span className="relative flex items-center w-14">
+            <span className="flex-1 border-t border-dashed border-accent2-400" />
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-accent absolute left-1/2 -translate-x-1/2" fill="currentColor">
+              <g transform="rotate(90 12 12)">
+                <path d="M21.5 15.5 L13.5 13 L13.5 5.5 C13.5 4.7 12.8 4 12 4 C11.2 4 10.5 4.7 10.5 5.5 L10.5 13 L2.5 15.5 L2.5 17.5 L10.5 15 L10.5 19.5 L8 21 L8 22.5 L12 21.5 L16 22.5 L16 21 L13.5 19.5 L13.5 15 L21.5 17.5 Z" />
+              </g>
+            </svg>
+            <span className="flex-1 border-t border-dashed border-accent2-400" />
+          </span>
+          <span className="font-mono text-sm font-bold text-text">DPS</span>
+        </div>
+        <p className="text-[10px] text-muted-300 mt-1 text-center">Vuelo directo · 2 pasajeros</p>
+      </div>
+
+      {/* Chip flotante de presupuesto */}
+      <div className="absolute -bottom-4 -right-3 sm:-right-6 bg-white rounded-xl px-3.5 py-2.5 card-shadow-lg rotate-[3deg] border border-border-100 animate-fade-slide-up" style={{ animationDelay: '700ms', animationFillMode: 'both' }}>
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full bg-success/15 text-success flex items-center justify-center">
+            <IconCheck className="w-3.5 h-3.5" />
+          </span>
+          <div className="leading-tight">
+            <p className="text-[10px] text-muted-300">Presupuesto</p>
+            <p className="text-xs font-medium text-success">Te sobran <span className="font-mono">$120</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Estilos por acento con clases LITERALES (Tailwind no detecta clases construidas
+// dinámicamente como `bg-${accent}`, así que las definimos completas aquí).
+const ACCENT_STYLES = {
+  accent: {
+    hoverBorder: 'hover:border-accent/30',
+    iconBg: 'bg-accent/10',
+    iconText: 'text-accent',
+    blob: 'bg-accent',
+    cta: 'bg-accent hover:bg-accent-600 hover:shadow-accent/25',
+  },
+  accent2: {
+    hoverBorder: 'hover:border-accent2/40',
+    iconBg: 'bg-accent2/15',
+    iconText: 'text-accent2-700',
+    blob: 'bg-accent2',
+    cta: 'bg-accent2-600 hover:bg-accent2-700 hover:shadow-accent2/25',
+  },
+};
+
 function ToolCard({ icon, title, description, features, cta, href, onClick, accent = 'accent' }) {
+  const a = ACCENT_STYLES[accent] || ACCENT_STYLES.accent;
   const content = (
     <div
-      className={`group relative overflow-hidden rounded-2xl p-6 sm:p-8 transition-all duration-500 cursor-pointer border border-border-100 hover:border-${accent}/30 h-full flex flex-col`}
+      className={`group relative overflow-hidden rounded-2xl p-6 sm:p-8 transition-all duration-500 cursor-pointer border border-border-100 ${a.hoverBorder} h-full flex flex-col`}
       style={{
         background: `linear-gradient(135deg, rgba(250, 247, 242, 0.95) 0%, rgba(255, 255, 255, 0.6) 100%)`,
         backdropFilter: 'blur(12px)',
         boxShadow: '0 4px 24px rgba(26, 18, 8, 0.06), 0 1px 4px rgba(26, 18, 8, 0.04)',
       }}
     >
-      <div className={`absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-[0.06] pointer-events-none bg-${accent}`} />
-      <div className={`absolute -bottom-16 -left-16 w-32 h-32 rounded-full opacity-[0.04] pointer-events-none bg-${accent}`} />
+      <div className={`absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-[0.06] pointer-events-none ${a.blob}`} />
+      <div className={`absolute -bottom-16 -left-16 w-32 h-32 rounded-full opacity-[0.04] pointer-events-none ${a.blob}`} />
 
       <div className="flex items-start gap-5 mb-5">
-        <div className={`w-14 h-14 rounded-xl bg-${accent}/10 flex items-center justify-center shrink-0 text-${accent} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-4deg]`}>
+        <div className={`w-14 h-14 rounded-xl ${a.iconBg} flex items-center justify-center shrink-0 ${a.iconText} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-4deg]`}>
           {icon}
         </div>
         <div className="min-w-0">
@@ -55,7 +149,7 @@ function ToolCard({ icon, title, description, features, cta, href, onClick, acce
         ))}
       </div>
 
-      <div className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 bg-${accent} text-white hover:bg-${accent}/90 hover:shadow-lg hover:shadow-${accent}/25 group-hover:translate-x-0.5 self-start`}>
+      <div className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 ${a.cta} text-white hover:shadow-lg group-hover:translate-x-0.5 self-start`}>
         {cta}
         <svg viewBox="0 0 16 16" className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 8 L13 8" /><path d="M9 4 L13 8 L9 12" />
@@ -87,6 +181,7 @@ function useScrollTo() {
 export default function Landing() {
   const heroRef = useScrollReveal();
   const toolsRef = useScrollReveal();
+  const destinationsRef = useScrollReveal();
   const searchRef = useScrollReveal();
   const howItWorksRef = useScrollReveal();
   const scrollToWidget = useScrollTo();
@@ -116,19 +211,8 @@ export default function Landing() {
                 </p>
                 <TrustStats />
               </div>
-              <div className="shrink-0 w-64 sm:w-80 lg:w-96 relative">
-                <div className="absolute inset-0 bg-gradient-radial from-accent/8 to-transparent rounded-full blur-2xl" />
-                <svg viewBox="0 0 500 280" className="w-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M70 220 Q180 30 320 50 Q440 68 460 160" stroke="#C4A882" strokeWidth="1.5" strokeDasharray="6 6" fill="none" opacity="0.5" />
-                  <circle cx="120" cy="165" r="3" fill="#E8611A" opacity="0.3" />
-                  <circle cx="180" cy="100" r="4" fill="#C4A882" opacity="0.4" />
-                  <circle cx="260" cy="58" r="3" fill="#E8611A" opacity="0.25" />
-                  <circle cx="350" cy="55" r="4" fill="#C4A882" opacity="0.35" />
-                  <circle cx="420" cy="85" r="2.5" fill="#E8611A" opacity="0.3" />
-                  <circle cx="455" cy="135" r="3" fill="#C4A882" opacity="0.4" />
-                  <path d="M85 175 L190 60 Q196 52 205 58 L245 78 Q252 82 248 90 L215 115 L280 105 Q290 103 295 110 L325 135 Q332 142 325 148 L280 150 L250 200 Q245 210 236 205 L195 170 L190 200 Q188 210 180 207 L130 187 Q115 182 85 175 Z" stroke="#E8611A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  <path d="M210 62 L250 82 Q252 85 248 90 L215 115" stroke="#C4A882" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" />
-                </svg>
+              <div className="shrink-0 py-6 lg:py-0">
+                <HeroCollage />
               </div>
             </div>
           </div>
@@ -193,6 +277,13 @@ export default function Landing() {
         </div>
       </section>
 
+      <div className="relative">
+        <div className="absolute top-10 right-0 w-80 h-80 bg-accent/3 rounded-full blur-3xl pointer-events-none" />
+        <div ref={destinationsRef.ref} className={`reveal ${destinationsRef.isVisible ? 'visible' : ''}`}>
+          <PopularDestinations />
+        </div>
+      </div>
+
       <div className="relative" id="search-widget-section">
         <div className="absolute top-0 left-1/4 w-72 h-72 bg-accent/3 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent2/5 rounded-full blur-3xl pointer-events-none" />
@@ -207,7 +298,7 @@ export default function Landing() {
                   Encuentra vuelos y hoteles sin complicaciones
                 </p>
                 <div className="separator mt-5 max-w-xs mx-auto">
-                  <span className="text-accent text-sm">✈</span>
+                  <IconPlane className="w-3.5 h-3.5 text-accent" />
                 </div>
               </div>
               <SearchWidget />

@@ -1,3 +1,5 @@
+import { IconDroplet, IconCloud, WEATHER_ICON_MAP } from './icons';
+
 const BADGE_CLIMA = {
   pronostico: {
     label: 'Pronóstico',
@@ -59,16 +61,20 @@ export default function WeatherSection({ clima, delay = 300 }) {
             }}
           >
             <p className="text-xs text-muted-300 capitalize mb-1">{formatDia(dia.fecha)}</p>
-            <p className="text-3xl leading-none mb-1.5" title={dia.descripcion}>
-              {dia.icono}
+            <p className="flex items-center justify-center text-accent2-600 mb-1.5" title={dia.descripcion}>
+              {(() => {
+                const WeatherIcon = WEATHER_ICON_MAP[dia.icono] || IconCloud;
+                return <WeatherIcon className="w-8 h-8" />;
+              })()}
             </p>
             <p className="font-mono text-sm text-text">
               {Math.round(dia.temp_max)}°
               <span className="text-muted-300"> / {Math.round(dia.temp_min)}°</span>
             </p>
             {dia.prob_lluvia != null && (
-              <p className={`text-xs mt-1 ${dia.prob_lluvia > 50 ? 'text-warning' : 'text-muted-300'}`}>
-                💧 {dia.prob_lluvia}%
+              <p className={`flex items-center justify-center gap-1 text-xs mt-1 ${dia.prob_lluvia > 50 ? 'text-warning' : 'text-muted-300'}`}>
+                <IconDroplet className="w-3 h-3" />
+                {dia.prob_lluvia}%
               </p>
             )}
           </div>

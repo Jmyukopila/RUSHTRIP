@@ -133,6 +133,15 @@ npm run dev
 
 El frontend arranca en `http://localhost:5173` con proxy automático al backend.
 
+### 5. Tests (backend)
+
+```bash
+pip install -r requirements.txt   # incluye pytest y pytest-asyncio
+pytest                            # corre toda la suite en tests/
+```
+
+La suite es offline (mockea la red, no requiere API keys) y cubre la lógica de servicios (hoteles, vuelos), caché, rate limiter y validación de rutas.
+
 ---
 
 ## Variables de entorno
@@ -141,6 +150,7 @@ El frontend arranca en `http://localhost:5173` con proxy automático al backend.
 |----------|-----------|-----------|
 | `TRAVELPAYOUTS_TOKEN` | Sí | Token de Travelpayouts para vuelos y autocomplete |
 | `TRAVELPAYOUTS_MARKER` | Sí | Marker de afiliado Aviasales para comisiones |
+| `TRAVELPAYOUTS_HOTEL_LINK` | No | Prefijo del link de afiliado de hoteles (solo producción). Vacío = Booking.com directo no afiliado. Ver [Monetización de hoteles](#monetización-de-hoteles-pendiente-go-live) |
 | `HOTELSNL_API_KEY` | No* | API key de Hotels.nl para hoteles reales (200 req/día gratis) |
 | `PEXELS_API_KEY` | No* | API key de Pexels para fotos de hoteles (200 req/hora gratis) |
 | `OPENTRIPMAP_API_KEY` | No* | API key de OpenTripMap para actividades reales del destino (gratis) |
@@ -360,17 +370,20 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 {
   "hoteles": [
     {
+      "id_hotelsnl": 123456,
       "nombre": "Miami Beach Hotel",
       "precio_noche": 89.50,
       "estrellas": 4,
       "rating": 8.5,
-      "foto_url": "https://images.pexels.com/...",
+      "foto_url": "https://cdn.worldota.net/...",
+      "fotos_urls": ["https://cdn.worldota.net/..."],
       "amenities": ["wifi", "piscina", "gimnasio"],
+      "hotelsnl_hash": "hFHUbO5sDBTeu0lLT6ZuDz8yhysv",
       "tipo": "real",
-      "link_reserva": "https://hotels.nl/booking/hash456"
+      "link_reserva": "https://tp.media/r?marker=723238&p=...&u=https%3A%2F%2Fwww.booking.com%2Fsearchresults.html%3Fss%3DMiami%2BBeach%2BHotel..."
     }
   ],
-  "aviso": null,
+  "aviso": "Precios reales de Hotels.nl. Al reservar generas comision.",
   "ciudad": "Miami",
   "precision": "real"
 }
@@ -381,21 +394,65 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 {
   "hoteles": [
     {
-      "nombre": "Hotel en Miami (estimado)",
+      "nombre": "Hotel Céntrico en Miami",
       "precio_noche": 75.00,
       "estrellas": 3,
-      "foto_url": "https://via.placeholder.com/400x300",
+      "foto_url": "https://images.pexels.com/...",
       "tipo": "estimado",
-      "link_reserva": "https://hotels.nl/search?q=Miami"
+      "link_reserva": "https://tp.media/r?marker=723238&p=...&u=https%3A%2F%2Fwww.booking.com%2F..."
     }
   ],
-  "aviso": "Mostrando precios estimados. Configurá HOTELSNL_API_KEY para datos reales.",
+  "aviso": "Mostrando precios de referencia. Los precios reales pueden variar.",
   "ciudad": "Miami",
   "precision": "estimada"
 }
 ```
 
-> **Nota:** Con `HOTELSNL_API_KEY` usa Hotels.nl (datos reales con fotos, ratings, amenities, comisión por reserva). Sin key, devuelve precios de referencia con enlace de búsqueda genérico.
+> **`link_reserva`** es un deep-link a la ficha del hotel concreto en Booking.com (nombre + ciudad + fechas + ocupación) con las fechas ya cargadas. **En desarrollo es un link directo no afiliado** (sin comisión, sin requerir aprobación). Si se configura `TRAVELPAYOUTS_HOTEL_LINK` (el prefijo del link de afiliado generado en el panel, sin el `&u=`), el sistema lo envuelve (`tp.media/r?marker=...&trs=...&p=...&u=<url-hotel>`) para generar comisión. Ver [Monetización de hoteles](#monetización-de-hoteles-pendiente-go-live). El campo `hotelsnl_hash` se conserva para una posible reserva one-click vía Hotels.nl (`/api/booking.php`, requiere cuenta verificada).
+
+---
+
+### `GET /hotels/detalle` — Detalle de un hotel (galería + habitaciones)
+
+Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de imágenes y habitaciones disponibles con precio y link de reserva por habitación.
+
+`GET /hotels/detalle?id=123456&checkin=2026-12-15&checkout=2026-12-20&adultos=2&ciudad=Miami`
+
+**Parámetros:**
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `id` | string | — | ID del hotel (campo `id_hotelsnl` de la búsqueda) |
+| `checkin` | string | — | Fecha de entrada `YYYY-MM-DD` |
+| `checkout` | string | — | Fecha de salida `YYYY-MM-DD` (posterior a checkin) |
+| `adultos` | integer | `2` | Número de adultos |
+| `ciudad` | string | `""` | Ciudad del hotel (opcional, mejora el link de reserva) |
+
+**Response (200):**
+```json
+{
+  "nombre": "Miami Beach Hotel",
+  "descripcion": "Hotel frente al mar con piscina...",
+  "fotos_urls": ["https://cdn.worldota.net/...", "https://cdn.worldota.net/..."],
+  "habitaciones": [
+    {
+      "nombre": "Habitación Doble Deluxe",
+      "capacidad": 2,
+      "cama": "1 cama king",
+      "comida": "Desayuno incluido",
+      "reembolsable": true,
+      "precio_total": 358.00,
+      "precio_noche": 89.50,
+      "moneda": "USD",
+      "hotelsnl_hash": "hFHUbO5sDBTeu0lLT6ZuDz8yhysv",
+      "link_reserva": "https://tp.media/r?marker=723238&p=...&u=..."
+    }
+  ],
+  "precision": "real"
+}
+```
+
+> Solo aplica a hoteles reales (con `id_hotelsnl`). Si Hotels.nl no devuelve detalle, responde con `habitaciones: []` y un `aviso`.
 
 ---
 
@@ -472,6 +529,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 | `ciudad` | string | Nombre de la ciudad (ej: `Madrid`, `Bogotá`) |
 | `fecha_inicio` | string | Primer día `YYYY-MM-DD` |
 | `fecha_fin` | string | Último día `YYYY-MM-DD` (rango máximo: 31 días) |
+| `iata` | string | *(opcional)* Código IATA del destino; fallback de coordenadas si el geocoding falla |
 
 **Response (200):**
 ```json
@@ -635,6 +693,21 @@ Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. L
 | Resolución ciudad → IATA | Travelpayouts autocomplete | Cache local |
 | Clima | Open-Meteo pronóstico (≤16 días) | Clima típico histórico (3 años) → cache stale |
 | Actividades | OpenTripMap (POIs por relevancia) | Cache stale → selección curada por destino |
+
+---
+
+## Monetización de hoteles (pendiente go-live)
+
+Los **datos** de hoteles vienen de **Hotels.nl** (gratis, funciona en localhost, sin aprobación) — la opción adecuada durante el desarrollo. La **comisión por reserva** se difiere a producción.
+
+**Por qué se difiere:** Travelpayouts (y los programas de hoteles que agrega) **no aprueba proyectos en desarrollo** y su Hotels API **prohíbe localhost** y exige sitio en vivo + prototipos + KPIs de conversión (≥9% a "Book", ≥5% a compra). Booking.com además requiere aprobación (~2 días) con T&C estrictos; Agoda pide 10-15 posts + About + privacidad. Por eso, en desarrollo el botón **"Reservar" usa un deep-link directo (no afiliado) a la ficha del hotel en Booking.com** — UX completa, sin comisión, sin riesgo de T&C.
+
+**Cómo activar la comisión (cuando el sitio esté público con contenido):**
+1. Conectar un programa de hoteles en Travelpayouts. Candidato recomendado: **ZenHotels** (mismo inventario Worldota que Hotels.nl → el hotel mostrado coincide con el reservable; deep-links a cualquier hotel; hasta 7%). Alternativas: Booking.com (~5%), Agoda (6%).
+2. Generar el link de afiliado **largo** del programa (no el corto `tpo.li`) hacia cualquier hotel.
+3. Pegar su prefijo (todo menos el `&u=...`) en la variable de entorno **`TRAVELPAYOUTS_HOTEL_LINK`**.
+
+A partir de ahí, cada `link_reserva` se envuelve automáticamente con tu afiliación (`tp.media/r?...&u=<hotel>`). Si el programa elegido no usa el formato `tp.media + &u=`, ajustar `_link_reserva_tp` en `services/hotels.py`.
 
 ---
 

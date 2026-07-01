@@ -1,4 +1,5 @@
 import { AFFILIATE_LINKS } from '../constants';
+import { IconTicket, IconPin, ACTIVITY_ICON_MAP } from './icons';
 
 const BADGE_ACTIVIDADES = {
   real: {
@@ -25,8 +26,8 @@ function FallbackCard({ ciudad, delay }) {
     <div className="animate-fade-slide-up" style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}>
       <div className="card-base p-5 sm:p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0 text-2xl">
-            🎟️
+          <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0">
+            <IconTicket className="w-6 h-6" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-display text-lg text-text">Actividades en {ciudad}</h3>
@@ -79,7 +80,12 @@ export default function ActivitiesSection({ actividades, ciudad, delay = 1300 })
             }}
           >
             <div className="flex items-start gap-3">
-              <span className="text-3xl leading-none shrink-0">{act.icono}</span>
+              <span className="w-11 h-11 rounded-xl bg-accent2/10 text-accent2-700 flex items-center justify-center shrink-0">
+                {(() => {
+                  const ActIcon = ACTIVITY_ICON_MAP[act.categoria] || IconPin;
+                  return <ActIcon className="w-5 h-5" />;
+                })()}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium text-text truncate">{act.nombre}</p>

@@ -48,7 +48,7 @@ Cliente HTTP async compartido para reutilizar conexiones.
 
 **Variables:**
 - `http_client` - Instancia global con timeout de 10s
-- `get_client(timeout)` - Factory para crear clientes con timeout custom
+- `request_with_retry(method, url, ...)` - Peticion con retry + backoff exponencial (lanza `ExternalAPIError`)
 
 **Uso:**
 ```python

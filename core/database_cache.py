@@ -4,6 +4,7 @@
 
 import json
 import logging
+import random
 import sqlite3
 import threading
 import time
@@ -60,7 +61,7 @@ def _init_db():
 
 
 def _cleanup():
-    """Elimina entradas expiradas (probabilistico: 1 de cada 10 llamadas)."""
+    """Elimina todas las entradas expiradas de la tabla."""
     try:
         with _get_db() as conn:
             now = time.time()
@@ -146,6 +147,9 @@ def cache_set(key: str, value: Any, provider: str = "unknown", ttl_seconds: int 
                     (key, json.dumps(value), provider, time.time(), ttl_seconds),
                 )
                 conn.commit()
+        # Limpieza probabilistica de expirados: 1 de cada 10 escrituras
+        if random.random() < 0.1:
+            _cleanup()
     except Exception as e:
         logger.warning(f"Cache set error: {e}")
 

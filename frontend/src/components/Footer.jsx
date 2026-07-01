@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { IconSparkle } from './icons';
 
 function LogoSmall() {
   return (
@@ -86,7 +87,7 @@ export default function Footer() {
             </p>
             <div className="flex items-center gap-2 text-xs text-[#6B5D4D]">
               <span>Hecho con</span>
-              <span className="text-[#E8611A]">✦</span>
+              <IconSparkle className="w-3 h-3 text-[#E8611A]" />
               <span>para viajeros</span>
             </div>
           </div>
