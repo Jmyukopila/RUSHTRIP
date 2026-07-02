@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import HotelCard from './HotelCard';
 import CarCard from './CarCard';
 import PrecisionBadge from './PrecisionBadge';
+import { crearReserva } from '../api/client';
 import { AFFILIATE_LINKS } from '../constants';
 import {
   IconPlane, IconHotel, IconCar, IconCheck, IconCheckCircle, IconWarning,
@@ -106,6 +108,9 @@ export default function TripPackage({ data, onModify }) {
   const [copied, setCopied] = useState(false);
   const [hotelSort, setHotelSort] = useState('recomendado');
   const [hotelSearch, setHotelSearch] = useState('');
+  // 'idle' | 'guardando' | 'guardado' | 'error'
+  const [saveState, setSaveState] = useState('idle');
+  const [saveError, setSaveError] = useState(null);
 
   const plan = data.plan_optimo;
   if (!plan || !plan.vuelo) return null;
@@ -135,6 +140,34 @@ export default function TripPackage({ data, onModify }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleSave() {
+    if (saveState === 'guardando' || saveState === 'guardado') return;
+    setSaveState('guardando');
+    setSaveError(null);
+    try {
+      await crearReserva({
+        origen: data.origen,
+        destino: data.destino,
+        fecha_salida: data.fecha_salida,
+        fecha_regreso: data.fecha_regreso,
+        total: plan.total || 0,
+        pasajeros: data.pasajeros || 1,
+        tier: data.tier || 'estandar',
+        presupuesto: data.presupuesto ?? null,
+        dentro_presupuesto: dentro,
+        incluir_hotel: !!plan.hotel,
+        incluir_vehiculo: !!plan.coche,
+        precision: data.precision || null,
+        ciudad_destino: data.ciudad_destino || '',
+        detalle: { vuelo: plan.vuelo, hotel: plan.hotel, coche: plan.coche },
+      });
+      setSaveState('guardado');
+    } catch (err) {
+      setSaveState('error');
+      setSaveError(err.userMessage || 'No pudimos guardar el plan. Intenta de nuevo.');
+    }
   }
 
   const hotelesFiltrados = hoteles.filter((h) =>
@@ -266,7 +299,20 @@ export default function TripPackage({ data, onModify }) {
               Reservar paquete →
             </a>
           )}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleSave}
+              disabled={saveState === 'guardando' || saveState === 'guardado'}
+              className="btn-outline text-sm gap-1.5 disabled:opacity-60"
+              title="Guardar este plan en tu cuenta"
+            >
+              {saveState === 'guardado' && <IconCheck className="w-3.5 h-3.5" />}
+              {saveState === 'guardando'
+                ? 'Guardando…'
+                : saveState === 'guardado'
+                ? 'Guardado'
+                : 'Guardar plan'}
+            </button>
             <button onClick={handleShare} className="btn-outline text-sm gap-1.5" title="Copiar enlace">
               {copied && <IconCheck className="w-3.5 h-3.5" />}
               {copied ? 'Copiado' : 'Compartir'}
@@ -276,6 +322,25 @@ export default function TripPackage({ data, onModify }) {
             </button>
           </div>
         </div>
+
+        {saveState === 'guardado' && (
+          <p className="flex items-center gap-1.5 text-sm text-success mt-3 animate-fadeIn">
+            <IconCheckCircle className="w-4 h-4 shrink-0" />
+            Plan guardado en tu cuenta.{' '}
+            <Link to="/reservas" className="text-accent hover:underline font-medium">Ver mis planes →</Link>
+          </p>
+        )}
+        {saveState === 'error' && saveError && (
+          <p className="flex items-center gap-1.5 text-sm text-accent mt-3 animate-fadeIn">
+            <IconWarning className="w-4 h-4 shrink-0" />
+            {saveError}
+          </p>
+        )}
+
+        <p className="text-xs text-muted-300 mt-4 leading-relaxed">
+          «Reservar paquete» te lleva al sitio del proveedor para completar la compra.
+          «Guardar plan» solo registra este plan en tu cuenta — no compra ni bloquea tarifas.
+        </p>
       </div>
 
       {/* Paneles colapsables: cambiar piezas del paquete */}

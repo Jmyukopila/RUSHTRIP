@@ -3,6 +3,19 @@
 // sin librerías externas (ver CLAUDE.md).
 import { useId } from 'react';
 
+// Marca RushTrip: reloj de arena con avión en negativo. Artwork rasterizado en
+// public/logo-mark.png (fondo transparente). Único lugar donde vive el logo.
+export function LogoMark({ className = 'w-8 h-8' }) {
+  return (
+    <img
+      src="/logo-mark.png"
+      alt="RushTrip"
+      className={`${className} object-contain select-none`}
+      draggable="false"
+    />
+  );
+}
+
 export function IconWarning({ className = 'w-4 h-4' }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

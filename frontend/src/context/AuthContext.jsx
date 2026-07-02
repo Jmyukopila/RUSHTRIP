@@ -56,6 +56,18 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Refresca el usuario desde el backend (p.ej. tras verificar el email).
+  const refreshUser = useCallback(async () => {
+    if (!getToken()) return null;
+    try {
+      const { usuario } = await fetchMe();
+      setUser(usuario);
+      return usuario;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const value = {
     user,
     loading,
@@ -63,6 +75,7 @@ export function AuthProvider({ children }) {
     login,
     register,
     logout,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

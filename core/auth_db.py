@@ -66,6 +66,8 @@ def _sqlite_init():
                 salt           TEXT NOT NULL,
                 reservas_count INTEGER NOT NULL DEFAULT 0,
                 ultimo_acceso  REAL,
+                terminos_aceptados_at REAL,
+                email_verificado INTEGER NOT NULL DEFAULT 0,
                 created_at     REAL NOT NULL
             )
         """)
@@ -79,6 +81,10 @@ def _sqlite_init():
             conn.execute("ALTER TABLE usuarios ADD COLUMN reservas_count INTEGER NOT NULL DEFAULT 0")
         if "ultimo_acceso" not in columnas:
             conn.execute("ALTER TABLE usuarios ADD COLUMN ultimo_acceso REAL")
+        if "terminos_aceptados_at" not in columnas:
+            conn.execute("ALTER TABLE usuarios ADD COLUMN terminos_aceptados_at REAL")
+        if "email_verificado" not in columnas:
+            conn.execute("ALTER TABLE usuarios ADD COLUMN email_verificado INTEGER NOT NULL DEFAULT 0")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sesiones (
                 token      TEXT PRIMARY KEY,
@@ -89,6 +95,17 @@ def _sqlite_init():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tokens_auth (
+                token      TEXT PRIMARY KEY,
+                usuario_id INTEGER NOT NULL,
+                tipo       TEXT NOT NULL,
+                expires_at REAL NOT NULL,
+                created_at REAL NOT NULL,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tokens_usuario ON tokens_auth(usuario_id, tipo)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS destinos_preferidos (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,13 +146,17 @@ def _sqlite_init():
         conn.commit()
 
 
-def _sqlite_crear_usuario(email, nombre, telefono, pais, password_hash, salt) -> Optional[int]:
+def _sqlite_crear_usuario(email, nombre, telefono, pais, password_hash, salt,
+                          terminos_aceptados_at=None) -> Optional[int]:
     try:
         with _get_db() as conn:
             cur = conn.execute(
-                """INSERT INTO usuarios (email, nombre, telefono, pais, password_hash, salt, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (email, nombre, telefono, pais, password_hash, salt, time.time()),
+                """INSERT INTO usuarios
+                     (email, nombre, telefono, pais, password_hash, salt,
+                      terminos_aceptados_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (email, nombre, telefono, pais, password_hash, salt,
+                 terminos_aceptados_at, time.time()),
             )
             conn.commit()
             return cur.lastrowid
@@ -158,6 +179,65 @@ def _sqlite_obtener_usuario_por_id(usuario_id: int) -> Optional[dict]:
 def _sqlite_actualizar_ultimo_acceso(usuario_id: int):
     with _get_db() as conn:
         conn.execute("UPDATE usuarios SET ultimo_acceso = ? WHERE id = ?", (time.time(), usuario_id))
+        conn.commit()
+
+
+def _sqlite_actualizar_password(usuario_id: int, password_hash: str, salt: str):
+    with _get_db() as conn:
+        conn.execute(
+            "UPDATE usuarios SET password_hash = ?, salt = ? WHERE id = ?",
+            (password_hash, salt, usuario_id),
+        )
+        conn.commit()
+
+
+def _sqlite_marcar_email_verificado(usuario_id: int):
+    with _get_db() as conn:
+        conn.execute("UPDATE usuarios SET email_verificado = 1 WHERE id = ?", (usuario_id,))
+        conn.commit()
+
+
+def _sqlite_borrar_sesiones_usuario(usuario_id: int):
+    with _get_db() as conn:
+        conn.execute("DELETE FROM sesiones WHERE usuario_id = ?", (usuario_id,))
+        conn.commit()
+
+
+def _sqlite_crear_token(token: str, usuario_id: int, tipo: str, expires_at: float):
+    with _get_db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO tokens_auth (token, usuario_id, tipo, expires_at, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (token, usuario_id, tipo, expires_at, time.time()),
+        )
+        conn.commit()
+
+
+def _sqlite_obtener_token(token: str, tipo: str) -> Optional[dict]:
+    with _get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM tokens_auth WHERE token = ? AND tipo = ?", (token, tipo)
+        ).fetchone()
+        if row is None:
+            return None
+        if row["expires_at"] < time.time():
+            conn.execute("DELETE FROM tokens_auth WHERE token = ?", (token,))
+            conn.commit()
+            return None
+        return dict(row)
+
+
+def _sqlite_borrar_token(token: str):
+    with _get_db() as conn:
+        conn.execute("DELETE FROM tokens_auth WHERE token = ?", (token,))
+        conn.commit()
+
+
+def _sqlite_borrar_tokens_usuario(usuario_id: int, tipo: str):
+    with _get_db() as conn:
+        conn.execute(
+            "DELETE FROM tokens_auth WHERE usuario_id = ? AND tipo = ?", (usuario_id, tipo)
+        )
         conn.commit()
 
 
@@ -269,10 +349,13 @@ def init_db():
     _sqlite_init()
 
 
-def crear_usuario(email, nombre, telefono, pais, password_hash, salt) -> Optional[int]:
+def crear_usuario(email, nombre, telefono, pais, password_hash, salt,
+                  terminos_aceptados_at=None) -> Optional[int]:
     if _usando_supabase():
-        return _sb.crear_usuario(email, nombre, telefono, pais, password_hash, salt)
-    return _sqlite_crear_usuario(email, nombre, telefono, pais, password_hash, salt)
+        return _sb.crear_usuario(email, nombre, telefono, pais, password_hash, salt,
+                                 terminos_aceptados_at=terminos_aceptados_at)
+    return _sqlite_crear_usuario(email, nombre, telefono, pais, password_hash, salt,
+                                 terminos_aceptados_at=terminos_aceptados_at)
 
 
 def obtener_usuario_por_email(email: str) -> Optional[dict]:
@@ -291,6 +374,48 @@ def actualizar_ultimo_acceso(usuario_id: int):
     if _usando_supabase():
         return _sb.actualizar_ultimo_acceso(usuario_id)
     return _sqlite_actualizar_ultimo_acceso(usuario_id)
+
+
+def actualizar_password(usuario_id: int, password_hash: str, salt: str):
+    if _usando_supabase():
+        return _sb.actualizar_password(usuario_id, password_hash, salt)
+    return _sqlite_actualizar_password(usuario_id, password_hash, salt)
+
+
+def marcar_email_verificado(usuario_id: int):
+    if _usando_supabase():
+        return _sb.marcar_email_verificado(usuario_id)
+    return _sqlite_marcar_email_verificado(usuario_id)
+
+
+def borrar_sesiones_usuario(usuario_id: int):
+    if _usando_supabase():
+        return _sb.borrar_sesiones_usuario(usuario_id)
+    return _sqlite_borrar_sesiones_usuario(usuario_id)
+
+
+def crear_token(token: str, usuario_id: int, tipo: str, expires_at: float):
+    if _usando_supabase():
+        return _sb.crear_token(token, usuario_id, tipo, expires_at)
+    return _sqlite_crear_token(token, usuario_id, tipo, expires_at)
+
+
+def obtener_token(token: str, tipo: str) -> Optional[dict]:
+    if _usando_supabase():
+        return _sb.obtener_token(token, tipo)
+    return _sqlite_obtener_token(token, tipo)
+
+
+def borrar_token(token: str):
+    if _usando_supabase():
+        return _sb.borrar_token(token)
+    return _sqlite_borrar_token(token)
+
+
+def borrar_tokens_usuario(usuario_id: int, tipo: str):
+    if _usando_supabase():
+        return _sb.borrar_tokens_usuario(usuario_id, tipo)
+    return _sqlite_borrar_tokens_usuario(usuario_id, tipo)
 
 
 def guardar_sesion(token: str, usuario_id: int, expires_at: float):

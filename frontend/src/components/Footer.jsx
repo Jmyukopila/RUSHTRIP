@@ -1,14 +1,5 @@
 import { Link } from 'react-router-dom';
-import { IconSparkle } from './icons';
-
-function LogoSmall() {
-  return (
-    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="16" r="14" stroke="#E8611A" strokeWidth="1.5" opacity="0.3" fill="#E8611A" fillOpacity="0.05" />
-      <path d="M10 20 L16 8 L22 20 M12 16 H20" stroke="#E8611A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+import { IconSparkle, LogoMark } from './icons';
 
 export default function Footer() {
   return (
@@ -21,10 +12,10 @@ export default function Footer() {
       />
       <footer className="bg-[#1A1208]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 lg:gap-12">
             <div className="sm:col-span-2 lg:col-span-1">
               <Link to="/" className="inline-flex items-center gap-2.5 group">
-                <LogoSmall />
+                <LogoMark className="w-6 h-6" />
                 <span className="font-display text-xl tracking-tight text-[#FAF7F2]">
                   Rush<span className="text-[#E8611A]">Trip</span>
                 </span>
@@ -50,11 +41,25 @@ export default function Footer() {
 
             <div>
               <h4 className="font-display text-xs uppercase tracking-widest text-[#C4A882] mb-5">
+                Legal
+              </h4>
+              <div className="flex flex-col gap-3">
+                <Link to="/terminos" className="text-sm text-[#8C7B6B] hover:text-[#FAF7F2] transition-colors duration-200">
+                  Términos de Servicio
+                </Link>
+                <Link to="/privacidad" className="text-sm text-[#8C7B6B] hover:text-[#FAF7F2] transition-colors duration-200">
+                  Política de Privacidad
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-display text-xs uppercase tracking-widest text-[#C4A882] mb-5">
                 Contacto
               </h4>
               <div className="flex flex-col gap-3">
-                <a href="mailto:support@myrushtrip.com" className="text-sm text-[#8C7B6B] hover:text-[#FAF7F2] transition-colors duration-200">
-                  support@myrushtrip.com
+                <a href="mailto:rushtripsupport@gmail.com" className="text-sm text-[#8C7B6B] hover:text-[#FAF7F2] transition-colors duration-200">
+                  rushtripsupport@gmail.com
                 </a>
               </div>
             </div>
@@ -81,14 +86,21 @@ export default function Footer() {
             </div>
           </div>
 
-          <div className="mt-14 pt-8 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-[#6B5D4D]">
-              &copy; {new Date().getFullYear()} RushTrip. Todos los derechos reservados.
+          <div className="mt-14 pt-8 border-t border-white/[0.06]">
+            <p className="text-xs text-[#6B5D4D] leading-relaxed max-w-3xl">
+              RushTrip es un comparador: las reservas se completan en los sitios de los
+              proveedores. Algunos enlaces son de afiliado (Travelpayouts y otros) y podemos
+              recibir una comisión por tu compra, sin costo adicional para ti.
             </p>
-            <div className="flex items-center gap-2 text-xs text-[#6B5D4D]">
-              <span>Hecho con</span>
-              <IconSparkle className="w-3 h-3 text-[#E8611A]" />
-              <span>para viajeros</span>
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-xs text-[#6B5D4D]">
+                &copy; {new Date().getFullYear()} RushTrip. Todos los derechos reservados.
+              </p>
+              <div className="flex items-center gap-2 text-xs text-[#6B5D4D]">
+                <span>Hecho con</span>
+                <IconSparkle className="w-3 h-3 text-[#E8611A]" />
+                <span>para viajeros</span>
+              </div>
             </div>
           </div>
         </div>

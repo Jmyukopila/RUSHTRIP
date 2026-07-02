@@ -45,7 +45,8 @@ api.interceptors.response.use(
       const data = error.response.data;
       error.userMessage = data?.detail || 'Error interno del servidor. Intenta nuevamente.';
     } else if (error.response.status === 429) {
-      error.userMessage = 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.';
+      const data = error.response.data;
+      error.userMessage = data?.detail || 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.';
     } else if (error.response.status === 401) {
       const data = error.response.data;
       error.userMessage = data?.detail || 'Debes iniciar sesion para continuar.';
@@ -68,8 +69,10 @@ export async function createPlan(data) {
 }
 
 // ── Autenticacion ─────────────────────────────────────────────────────────
-export async function registerUser({ email, password, nombre, telefono, pais }) {
-  const response = await api.post('/auth/register', { email, password, nombre, telefono, pais });
+export async function registerUser({ email, password, nombre, telefono, pais, aceptaTerminos }) {
+  const response = await api.post('/auth/register', {
+    email, password, nombre, telefono, pais, acepta_terminos: !!aceptaTerminos,
+  });
   return response.data;
 }
 
@@ -86,8 +89,39 @@ export async function logoutUser() {
   }
 }
 
+export async function forgotPassword(email) {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+}
+
+export async function resetPassword({ token, password }) {
+  const response = await api.post('/auth/reset-password', { token, password });
+  return response.data;
+}
+
+export async function verifyEmail(token) {
+  const response = await api.post('/auth/verify-email', { token });
+  return response.data;
+}
+
+export async function resendVerification() {
+  const response = await api.post('/auth/resend-verification');
+  return response.data;
+}
+
 export async function fetchMe() {
   const response = await api.get('/auth/me');
+  return response.data;
+}
+
+// ── Reservas (planes guardados en la cuenta) ─────────────────────────────
+export async function crearReserva(data) {
+  const response = await api.post('/auth/reservas', data);
+  return response.data;
+}
+
+export async function fetchReservas() {
+  const response = await api.get('/auth/reservas');
   return response.data;
 }
 

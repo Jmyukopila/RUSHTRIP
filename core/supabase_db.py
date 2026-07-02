@@ -47,9 +47,33 @@ def init_db():
                 salt           TEXT NOT NULL,
                 reservas_count INTEGER NOT NULL DEFAULT 0,
                 ultimo_acceso  TIMESTAMPTZ,
+                terminos_aceptados_at TIMESTAMPTZ,
+                email_verificado BOOLEAN NOT NULL DEFAULT false,
                 created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # Migraciones idempotentes para DBs creadas antes de agregar columnas.
+        conn.execute(
+            "ALTER TABLE public.usuarios "
+            "ADD COLUMN IF NOT EXISTS terminos_aceptados_at TIMESTAMPTZ"
+        )
+        conn.execute(
+            "ALTER TABLE public.usuarios "
+            "ADD COLUMN IF NOT EXISTS email_verificado BOOLEAN NOT NULL DEFAULT false"
+        )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS public.tokens_auth (
+                token      TEXT PRIMARY KEY,
+                usuario_id BIGINT NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+                tipo       TEXT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tokens_usuario "
+            "ON public.tokens_auth(usuario_id, tipo)"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS public.sesiones (
                 token      TEXT PRIMARY KEY,
@@ -98,14 +122,17 @@ def init_db():
 
 # ─── Usuarios ──────────────────────────────────────────────────────────────
 
-def crear_usuario(email, nombre, telefono, pais, password_hash, salt) -> Optional[int]:
+def crear_usuario(email, nombre, telefono, pais, password_hash, salt,
+                  terminos_aceptados_at=None) -> Optional[int]:
     """Inserta un usuario nuevo. Devuelve su id, o None si el email ya existe."""
     try:
         with _conn() as conn:
             row = conn.execute(
-                """INSERT INTO public.usuarios (email, nombre, telefono, pais, password_hash, salt)
-                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                (email, nombre, telefono, pais, password_hash, salt),
+                """INSERT INTO public.usuarios
+                     (email, nombre, telefono, pais, password_hash, salt, terminos_aceptados_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (email, nombre, telefono, pais, password_hash, salt,
+                 _ts(terminos_aceptados_at) if terminos_aceptados_at is not None else None),
             ).fetchone()
             conn.commit()
             return row["id"]
@@ -131,6 +158,70 @@ def actualizar_ultimo_acceso(usuario_id: int):
     with _conn() as conn:
         conn.execute(
             "UPDATE public.usuarios SET ultimo_acceso = now() WHERE id = %s", (usuario_id,)
+        )
+        conn.commit()
+
+
+def actualizar_password(usuario_id: int, password_hash: str, salt: str):
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE public.usuarios SET password_hash = %s, salt = %s WHERE id = %s",
+            (password_hash, salt, usuario_id),
+        )
+        conn.commit()
+
+
+def marcar_email_verificado(usuario_id: int):
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE public.usuarios SET email_verificado = true WHERE id = %s", (usuario_id,)
+        )
+        conn.commit()
+
+
+# ─── Tokens de un solo uso (reset de contrasena / verificacion de email) ────
+
+def crear_token(token: str, usuario_id: int, tipo: str, expires_at: float):
+    with _conn() as conn:
+        conn.execute(
+            """INSERT INTO public.tokens_auth (token, usuario_id, tipo, expires_at)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (token) DO UPDATE
+                 SET usuario_id = EXCLUDED.usuario_id, tipo = EXCLUDED.tipo,
+                     expires_at = EXCLUDED.expires_at""",
+            (token, usuario_id, tipo, _ts(expires_at)),
+        )
+        conn.commit()
+
+
+def obtener_token(token: str, tipo: str) -> Optional[dict]:
+    """Devuelve el token si existe, es del tipo dado y no ha expirado. Purga los vencidos."""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT token, usuario_id, tipo, expires_at FROM public.tokens_auth "
+            "WHERE token = %s AND tipo = %s",
+            (token, tipo),
+        ).fetchone()
+        if row is None:
+            return None
+        if row["expires_at"] < datetime.now(timezone.utc):
+            conn.execute("DELETE FROM public.tokens_auth WHERE token = %s", (token,))
+            conn.commit()
+            return None
+        return row
+
+
+def borrar_token(token: str):
+    with _conn() as conn:
+        conn.execute("DELETE FROM public.tokens_auth WHERE token = %s", (token,))
+        conn.commit()
+
+
+def borrar_tokens_usuario(usuario_id: int, tipo: str):
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM public.tokens_auth WHERE usuario_id = %s AND tipo = %s",
+            (usuario_id, tipo),
         )
         conn.commit()
 
@@ -168,6 +259,13 @@ def obtener_sesion(token: str) -> Optional[dict]:
 def borrar_sesion(token: str):
     with _conn() as conn:
         conn.execute("DELETE FROM public.sesiones WHERE token = %s", (token,))
+        conn.commit()
+
+
+def borrar_sesiones_usuario(usuario_id: int):
+    """Cierra todas las sesiones de un usuario (usado al resetear la contrasena)."""
+    with _conn() as conn:
+        conn.execute("DELETE FROM public.sesiones WHERE usuario_id = %s", (usuario_id,))
         conn.commit()
 
 

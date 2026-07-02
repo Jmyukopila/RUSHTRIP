@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Any
 
 from services import auth as auth_service
-from core.errors import ValidationError
+from core.errors import RateLimitError, ValidationError
 
 router = APIRouter(
     prefix="/auth",
@@ -22,11 +22,27 @@ class RegistroRequest(BaseModel):
     nombre:   str = Field(..., min_length=2, max_length=80, description="Nombre completo")
     telefono: str = Field("", max_length=20, description="Numero de telefono (opcional)")
     pais:     str = Field(..., min_length=2, max_length=60, description="Pais de residencia")
+    acepta_terminos: bool = Field(
+        ..., description="El usuario acepto los Terminos de Servicio y la Politica de Privacidad"
+    )
 
 
 class LoginRequest(BaseModel):
     email:    str = Field(..., min_length=3, max_length=120, description="Correo electronico")
     password: str = Field(..., min_length=1, max_length=200, description="Contrasena")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=120, description="Correo de la cuenta")
+
+
+class ResetPasswordRequest(BaseModel):
+    token:    str = Field(..., min_length=10, max_length=400, description="Token recibido por correo")
+    password: str = Field(..., min_length=8, max_length=200, description="Contrasena nueva (min. 8)")
+
+
+class VerificarEmailRequest(BaseModel):
+    token: str = Field(..., min_length=10, max_length=400, description="Token de verificacion")
 
 
 class ReservaRequest(BaseModel):
@@ -77,7 +93,8 @@ async def requerir_usuario(usuario: Optional[dict] = Depends(usuario_actual)) ->
 async def register(body: RegistroRequest):
     try:
         return auth_service.registrar(
-            body.email, body.password, body.nombre, body.telefono, body.pais
+            body.email, body.password, body.nombre, body.telefono, body.pais,
+            acepta_terminos=body.acepta_terminos,
         )
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.message)
@@ -87,8 +104,38 @@ async def register(body: RegistroRequest):
 async def login(body: LoginRequest):
     try:
         return auth_service.iniciar_sesion(body.email, body.password)
+    except RateLimitError as e:
+        # Bloqueo temporal por fuerza bruta contra la cuenta (backoff exponencial).
+        raise HTTPException(status_code=429, detail=e.message)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.message)
+
+
+@router.post("/forgot-password", summary="Solicitar recuperacion de contrasena")
+async def forgot_password(body: ForgotPasswordRequest):
+    # Respuesta generica siempre (no revela si el correo existe).
+    return auth_service.solicitar_reset(body.email)
+
+
+@router.post("/reset-password", summary="Restablecer contrasena con token")
+async def reset_password(body: ResetPasswordRequest):
+    try:
+        return auth_service.resetear_password(body.token, body.password)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.message)
+
+
+@router.post("/verify-email", summary="Verificar el correo con token")
+async def verify_email(body: VerificarEmailRequest):
+    try:
+        return auth_service.verificar_email(body.token)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.message)
+
+
+@router.post("/resend-verification", summary="Reenviar el correo de verificacion")
+async def resend_verification(usuario: dict = Depends(requerir_usuario)):
+    return auth_service.reenviar_verificacion(usuario["id"])
 
 
 @router.post("/logout", summary="Cerrar sesion")

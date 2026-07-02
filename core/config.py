@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     # URL del proyecto (informativa / para integraciones futuras del frontend).
     supabase_url:         str = ""
 
+    # ─── Envio de email (recuperacion de contrasena y verificacion) ──
+    # Si SMTP no esta configurado, los correos se registran en el log (dev) en
+    # vez de enviarse: el flujo funciona sin credenciales, igual que el resto.
+    smtp_host:      str = ""
+    smtp_port:      int = 587
+    smtp_user:      str = ""
+    smtp_password:  str = ""
+    email_from:     str = "RushTrip <rushtripsupport@gmail.com>"
+    # URL publica del frontend, para construir los enlaces de los correos.
+    app_base_url:   str = "http://localhost:5173"
+
     cors_origins:         str = "*"
     debug:                bool = True
 

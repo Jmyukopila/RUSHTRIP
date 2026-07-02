@@ -29,6 +29,12 @@ def temp_dbs(tmp_path, monkeypatch):
     dc.init_db()
     rl.init_db()
     ad.init_db()
+
+    # Los contadores anti fuerza bruta viven en memoria de modulo: limpiarlos
+    # para que los fallos de login de un test no bloqueen al siguiente.
+    import services.auth as auth_service
+    auth_service._INTENTOS.clear()
+
     yield
 
 

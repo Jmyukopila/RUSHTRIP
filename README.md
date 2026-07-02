@@ -155,8 +155,13 @@ La suite es offline (mockea la red, no requiere API keys) y cubre la lógica de 
 | `PEXELS_API_KEY` | No* | API key de Pexels para fotos de hoteles (200 req/hora gratis) |
 | `OPENTRIPMAP_API_KEY` | No* | API key de OpenTripMap para actividades reales del destino (gratis) |
 | `CORS_ORIGINS` | No | Orígenes CORS separados por coma (default: `http://localhost:5173,http://127.0.0.1:5173`) |
+| `SUPABASE_DB_URL` | No | Connection string de Postgres (pooler de Supabase) para persistir usuarios/sesiones/reservas en la nube. Vacío = SQLite local |
+| `APP_BASE_URL` | No | URL pública del frontend para construir los enlaces de los correos (default: `http://localhost:5173`) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | No** | Envío de correos (recuperación de contraseña y verificación de email) |
 
 \* Sin `HOTELSNL_API_KEY` los hoteles se muestran como precios estimados. Sin `PEXELS_API_KEY` se usan placehold.co. Sin `OPENTRIPMAP_API_KEY` las actividades son una selección curada por RushTrip.
+
+\*\* Sin SMTP configurado, los correos de verificación y recuperación **no se envían**: su contenido (incluido el enlace) se registra en el log del servidor, útil en desarrollo. El flujo funciona igual sin credenciales.
 
 ---
 
@@ -172,13 +177,31 @@ RushTrip usa sesiones con **tokens Bearer opacos** (sin JWT ni dependencias exte
 
 #### `POST /auth/register` — Crear cuenta
 
-Body: `{ "email": "tu@correo.com", "password": "min-8-caracteres", "nombre": "Nombre completo", "pais": "Colombia", "telefono": "+57 300 123 4567" }`. Obligatorios: `email`, `password`, `nombre`, `pais`. El `telefono` es opcional (si se envía, debe ser un número válido).
+Body: `{ "email": "tu@correo.com", "password": "min-8-caracteres", "nombre": "Nombre completo", "pais": "Colombia", "telefono": "+57 300 123 4567", "acepta_terminos": true }`. Obligatorios: `email`, `password`, `nombre`, `pais`, `acepta_terminos`. El `telefono` es opcional (si se envía, debe ser un número válido). `acepta_terminos` debe ser `true` (consentimiento de Términos y Privacidad); el servidor lo valida y persiste el momento de aceptación en `usuarios.terminos_aceptados_at`.
 
-Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais" }, "token": "<bearer>" }`. Errores `422`: email inválido, contraseña < 8 caracteres, nombre/teléfono/país faltantes o inválidos, o email ya registrado.
+Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais", "email_verificado" }, "token": "<bearer>" }`. Errores `422`: email inválido, contraseña < 8 caracteres, nombre/teléfono/país faltantes o inválidos, términos no aceptados, o email ya registrado. Al registrarse, el usuario queda con sesión iniciada pero `email_verificado: false` y se le envía (o registra en el log, en dev) un enlace de verificación.
 
 #### `POST /auth/login` — Iniciar sesión
 
 Body: `{ "email", "password" }`. Respuesta `200`: `{ "usuario", "token" }`. Credenciales incorrectas → `422` con mensaje genérico.
+
+Protección anti fuerza bruta por cuenta: tras 5 fallos consecutivos con el mismo email (exista o no la cuenta), el login queda bloqueado temporalmente con backoff exponencial (30 s el primer bloqueo, duplicando hasta 15 min) → `429` con el tiempo de espera en `detail`. Un login exitoso reinicia el contador.
+
+#### `POST /auth/forgot-password` — Solicitar recuperación de contraseña
+
+Body: `{ "email" }`. Respuesta **siempre** `200` con `{ "ok": true, "mensaje": "..." }`, exista o no el correo (no revela si está registrado). Si existe, invalida tokens de reset previos, genera uno nuevo (vence en 1 h) y envía el enlace `{APP_BASE_URL}/reset-password?token=...`.
+
+#### `POST /auth/reset-password` — Restablecer contraseña con token
+
+Body: `{ "token", "password" }` (contraseña nueva, min. 8). Respuesta `200`: `{ "ok": true }`. Al cambiarla, **cierra todas las sesiones abiertas** del usuario y limpia su contador anti fuerza bruta. `422` si el token es inválido/expiró o la contraseña es corta.
+
+#### `POST /auth/verify-email` — Verificar el correo con token
+
+Body: `{ "token" }` (recibido por correo, vence en 24 h). Respuesta `200`: `{ "ok": true, "usuario": { ..., "email_verificado": true } }`. El token es de un solo uso. `422` si es inválido/expiró.
+
+#### `POST /auth/resend-verification` — Reenviar el correo de verificación
+
+Requiere sesión. Reenvía el enlace si la cuenta aún no está verificada. Respuesta `200`: `{ "ok": true }`.
 
 #### `POST /auth/logout` — Cerrar sesión
 
@@ -186,7 +209,7 @@ Invalida el token de la cabecera `Authorization`. Respuesta `200`: `{ "ok": true
 
 #### `GET /auth/me` — Perfil del usuario actual
 
-Requiere `Authorization: Bearer <token>`. Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais", "reservas_count", "fecha_registro", "ultimo_acceso", "destinos_preferidos": [ { "destino_iata", "ciudad", "veces", "favorito", "ultimo_uso" } ] } }`; `401` si no hay sesión válida.
+Requiere `Authorization: Bearer <token>`. Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais", "email_verificado", "reservas_count", "fecha_registro", "ultimo_acceso", "destinos_preferidos": [ { "destino_iata", "ciudad", "veces", "favorito", "ultimo_uso" } ] } }`; `401` si no hay sesión válida.
 
 #### `POST /auth/reservas` — Guardar una reserva confirmada
 

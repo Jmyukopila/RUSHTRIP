@@ -5,6 +5,12 @@ import Footer from './components/Footer';
 import Landing from './pages/Landing';
 import Plan from './pages/Plan';
 import Login from './pages/Login';
+import RecuperarPassword from './pages/RecuperarPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerificarEmail from './pages/VerificarEmail';
+import Terminos from './pages/Terminos';
+import Privacidad from './pages/Privacidad';
+import Reservas from './pages/Reservas';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function ScrollToTop() {
@@ -53,11 +59,61 @@ export default function App() {
             }
           />
           <Route
+            path="/recuperar"
+            element={
+              <PageTransition>
+                <RecuperarPassword />
+              </PageTransition>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <PageTransition>
+                <ResetPassword />
+              </PageTransition>
+            }
+          />
+          <Route
+            path="/verificar-email"
+            element={
+              <PageTransition>
+                <VerificarEmail />
+              </PageTransition>
+            }
+          />
+          <Route
+            path="/terminos"
+            element={
+              <PageTransition>
+                <Terminos />
+              </PageTransition>
+            }
+          />
+          <Route
+            path="/privacidad"
+            element={
+              <PageTransition>
+                <Privacidad />
+              </PageTransition>
+            }
+          />
+          <Route
             path="/plan"
             element={
               <ProtectedRoute>
                 <PageTransition>
                   <Plan />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reservas"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <Reservas />
                 </PageTransition>
               </ProtectedRoute>
             }
