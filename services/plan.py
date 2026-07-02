@@ -123,19 +123,36 @@ def _precio_vuelo_minimo(iata_destino: str) -> float:
     )
 
 
+# Factores de presupuesto por tier. El presupuesto base (vuelo + hotel + coche)
+# ya varía por país vía los precios de referencia; estos factores lo ajustan por
+# nivel de calidad y definen cuánto margen hay hasta el máximo sugerido:
+#   - vuelo/hotel/coche: escalan el mínimo (económico más barato, premium más caro)
+#   - max_ratio: multiplica el subtotal ajustado para obtener el máximo del tier
+#     (económico tiene poco margen; premium mucho, porque hoteles/vuelos de gama
+#      alta varían más de precio)
+TIER_PRESUPUESTO_FACTORES: dict[str, dict[str, float]] = {
+    "economico": {"vuelo": 0.9, "hotel": 0.7, "coche": 0.8, "max_ratio": 1.8},
+    "estandar":  {"vuelo": 1.0, "hotel": 1.0, "coche": 1.0, "max_ratio": 2.4},
+    "premium":   {"vuelo": 1.3, "hotel": 2.0, "coche": 1.6, "max_ratio": 3.2},
+}
+
+
 def calcular_presupuesto_minimo(
     origen: str, destino: str, noches: int, pasajeros: int,
     incluir_hotel: bool = True, incluir_vehiculo: bool = False,
+    tier: str = "estandar",
 ) -> dict:
     """
-    Calcula un presupuesto mínimo sugerido basado en precios de referencia.
-    No hace llamadas a APIs externas — solo usa datos estáticos.
+    Calcula un presupuesto mínimo y máximo sugerido basado en precios de
+    referencia. No hace llamadas a APIs externas — solo usa datos estáticos.
 
-    La fórmula base:
-      - Vuelo mínimo: PRECIO_VUELO_MINIMO[destino] * pasajeros
-      - Hotel mínimo: PRECIO_REFERENCIA_HOTEL[destino] * noches * pasajeros
-      - Coche mínimo: PRECIO_REFERENCIA_COCHE[destino] * noches (si aplica)
-      - Margen: 10% sobre el total
+    La fórmula varía por país (precios de referencia por destino) y por tier
+    (factores en TIER_PRESUPUESTO_FACTORES):
+      - Vuelo:  PRECIO_VUELO_MINIMO[destino] * pasajeros * factor_vuelo
+      - Hotel:  PRECIO_REFERENCIA_HOTEL[destino] * noches * pasajeros * factor_hotel
+      - Coche:  PRECIO_REFERENCIA_COCHE[destino] * noches * factor_coche (si aplica)
+      - Mínimo: subtotal + 10% de margen
+      - Máximo: subtotal * max_ratio del tier
 
     Args:
         origen: Código IATA de origen
@@ -144,20 +161,23 @@ def calcular_presupuesto_minimo(
         pasajeros: Número de pasajeros
         incluir_hotel: Si incluir hotel en el cálculo
         incluir_vehiculo: Si incluir vehículo en el cálculo
+        tier: Nivel de calidad ('economico', 'estandar', 'premium')
 
     Returns:
-        Dict con presupuesto_minimo_sugerido y desglose
+        Dict con presupuesto_minimo_sugerido, presupuesto_maximo_sugerido y desglose
     """
     from services.hotels import PRECIO_REFERENCIA_HOTEL
 
-    vuelo_min = _precio_vuelo_minimo(destino) * pasajeros
+    factores = TIER_PRESUPUESTO_FACTORES.get(tier, TIER_PRESUPUESTO_FACTORES["estandar"])
+
+    vuelo_min = _precio_vuelo_minimo(destino) * pasajeros * factores["vuelo"]
 
     hotel_min = 0
     if incluir_hotel:
         precio_noche = PRECIO_REFERENCIA_HOTEL.get(
             destino.upper(), PRECIO_REFERENCIA_HOTEL["_default"]
         )
-        hotel_min = precio_noche * noches * pasajeros
+        hotel_min = precio_noche * noches * pasajeros * factores["hotel"]
 
     coche_min = 0
     if incluir_vehiculo:
@@ -165,18 +185,21 @@ def calcular_presupuesto_minimo(
         precio_dia = PRECIO_REFERENCIA_COCHE.get(
             destino.upper(), PRECIO_REFERENCIA_COCHE["_default"]
         )
-        coche_min = precio_dia * noches
+        coche_min = precio_dia * noches * factores["coche"]
 
     subtotal = vuelo_min + hotel_min + coche_min
-    total = round(subtotal * 1.1, 2)  # Margen del 10%
+    minimo = round(subtotal * 1.1, 2)  # Margen del 10%
+    maximo = round(subtotal * factores["max_ratio"], 2)
 
     return {
-        "presupuesto_minimo_sugerido": total,
+        "presupuesto_minimo_sugerido": minimo,
+        "presupuesto_maximo_sugerido": maximo,
+        "tier": tier,
         "desglose": {
             "vuelo_minimo": round(vuelo_min, 2),
             "hotel_minimo": round(hotel_min, 2),
             "coche_minimo": round(coche_min, 2),
-            "margen": round(total - subtotal, 2),
+            "margen": round(minimo - subtotal, 2),
         },
     }
 
@@ -196,6 +219,83 @@ TIER_CONFIG = {
 def _ciudad_desde_iata(iata: str) -> str:
     """Convierte código IATA al nombre de ciudad para buscar hoteles."""
     return IATA_A_CIUDAD.get(iata.upper(), iata)
+
+
+async def _resolver_ciudad_destino(iata: str) -> str:
+    """
+    Nombre de ciudad para un IATA, resolviendo via autocomplete (cacheado) si
+    no está en el mapeo local. Pasar el código crudo a los servicios de hoteles
+    hace que el geocoder acierte cualquier cosa (p.ej. 'ZAG' devolvía hoteles
+    de Ámsterdam en vez de Zagreb).
+    """
+    nombre = IATA_A_CIUDAD.get(iata.upper())
+    if nombre:
+        return nombre
+    try:
+        resultados = await buscar_aeropuerto(iata)
+        if resultados and resultados[0].get("nombre"):
+            return resultados[0]["nombre"]
+    except Exception as e:
+        logger.warning(f"No se pudo resolver nombre de ciudad para {iata}: {e}")
+    return iata.upper()
+
+
+async def _vuelos_flexibles(
+    origen: str,
+    destino: str,
+    fecha_salida: str,
+    fecha_regreso: str,
+    pasajeros: int,
+    duracion_dias: int,
+) -> tuple[dict, str, str]:
+    """
+    Modo flexible: una búsqueda por mes detecta el día de salida más barato
+    (los vuelos vienen ordenados por precio) y una búsqueda exacta confirma esa
+    ventana. Máximo 2 llamadas a buscar_vuelos, en vez de recorrer ~6 ventanas.
+
+    Returns:
+        Tupla (resultado_vuelos, fecha_salida_final, fecha_regreso_final)
+    """
+    from datetime import datetime as dt, timedelta
+
+    mes = fecha_salida[:7]  # YYYY-MM
+    resultado_mes = await buscar_vuelos(origen, destino, mes, mes, pasajeros)
+    # Solo cuentan salidas dentro del mes pedido: la cascada de buscar_vuelos
+    # puede devolver vuelos de otros meses (nivel "sin fecha") y elegir esas
+    # fechas movería el viaje fuera de lo que pidió el usuario.
+    vuelos_mes = [
+        v for v in (resultado_mes.get("vuelos") or [])
+        if (v.get("salida") or "").startswith(mes)
+    ]
+    if not vuelos_mes:
+        resultado = await buscar_vuelos(origen, destino, fecha_salida, fecha_regreso, pasajeros)
+        return resultado, fecha_salida, fecha_regreso
+
+    mejor_dia = (vuelos_mes[0].get("salida") or "")[:10]
+    try:
+        d_salida = dt.strptime(mejor_dia, "%Y-%m-%d")
+    except ValueError:
+        return resultado_mes, fecha_salida, fecha_regreso
+
+    mejor_salida = mejor_dia
+    mejor_regreso = (d_salida + timedelta(days=duracion_dias)).strftime("%Y-%m-%d")
+
+    resultado = resultado_mes
+    try:
+        res_exacto = await buscar_vuelos(origen, destino, mejor_salida, mejor_regreso, pasajeros)
+        if res_exacto.get("vuelos"):
+            resultado = res_exacto
+    except Exception as e:
+        logger.warning(f"Busqueda exacta flexible fallo para {origen}->{destino}: {e}")
+
+    if resultado is resultado_mes:
+        resultado["precision"] = "mes"
+        resultado["vuelos"] = vuelos_mes  # sin salidas fuera del mes pedido
+    resultado["aviso"] = (
+        f"Modo flexible: encontramos la mejor fecha para tu viaje de {duracion_dias} dias. "
+        f"Salida: {mejor_salida}, Regreso: {mejor_regreso}."
+    )
+    return resultado, mejor_salida, mejor_regreso
 
 
 def _precio_hotel_estimado(iata_destino: str) -> float:
@@ -375,87 +475,44 @@ async def generar_plan(
     # Obtener configuración del tier
     cfg = TIER_CONFIG.get(tier, TIER_CONFIG["estandar"])
 
-    # 1. Buscar vuelos (estrategia de 3 niveles ya integrada)
-    # Si modo flexible, busca por mes y luego prueba ventanas de fechas
-    if modo == "flexible":
-        from datetime import datetime as dt, timedelta
-        aviso_flex = None
-        mes = fecha_salida[:7]  # YYYY-MM
-        resultado_vuelos = await buscar_vuelos(origen, destino, mes, mes, pasajeros)
-        if resultado_vuelos.get("vuelos"):
-            # Agrupar vuelos baratos por dia de salida para encontrar la mejor ventana
-            vuelos_mes = resultado_vuelos["vuelos"]
-            try:
-                inicio_mes = dt.strptime(mes + "-01", "%Y-%m-%d")
-                if inicio_mes.month == 12:
-                    fin_mes = dt(inicio_mes.year + 1, 1, 1) - timedelta(days=1)
-                else:
-                    fin_mes = dt(inicio_mes.year, inicio_mes.month + 1, 1) - timedelta(days=1)
-                dias_mes = (fin_mes - inicio_mes).days + 1
-                max_start = dias_mes - duracion_dias
-                if max_start > 0:
-                    mejor_total = float("inf")
-                    mejor_salida = fecha_salida
-                    mejor_regreso = fecha_regreso
-                    for offset in range(0, max_start + 1, max(1, max_start // 5)):
-                        d_salida = inicio_mes + timedelta(days=offset)
-                        d_regreso = d_salida + timedelta(days=duracion_dias)
-                        s_str = d_salida.strftime("%Y-%m-%d")
-                        r_str = d_regreso.strftime("%Y-%m-%d")
-                        try:
-                            res_ventana = await buscar_vuelos(origen, destino, s_str, r_str, pasajeros)
-                            if res_ventana.get("vuelos"):
-                                min_precio = min(v["precio_total"] for v in res_ventana["vuelos"])
-                                if min_precio < mejor_total:
-                                    mejor_total = min_precio
-                                    mejor_salida = s_str
-                                    mejor_regreso = r_str
-                                    resultado_vuelos = res_ventana
-                        except Exception:
-                            pass
-                    fecha_salida = mejor_salida
-                    fecha_regreso = mejor_regreso
-                    aviso_flex = (
-                        f"Modo flexible: encontramos la mejor fecha para tu viaje de {duracion_dias} dias. "
-                        f"Salida: {mejor_salida}, Regreso: {mejor_regreso}."
-                    )
-            except Exception:
-                pass
-        else:
-            resultado_vuelos = await buscar_vuelos(origen, destino, fecha_salida, fecha_regreso, pasajeros)
+    # Convertir IATA a nombre de ciudad para hoteles
+    ciudad_destino = await _resolver_ciudad_destino(destino)
 
-        if aviso_flex:
-            resultado_vuelos["aviso"] = aviso_flex
-    else:
-        resultado_vuelos = await buscar_vuelos(
-            origen, destino, fecha_salida, fecha_regreso, pasajeros
-        )
-
-    # 2. Convertir IATA a nombre de ciudad para hoteles
-    ciudad_destino = _ciudad_desde_iata(destino)
-
-    # 2a. Buscar hoteles con filtro de estrellas según tier
-    if incluir_hotel:
-        resultado_hoteles = await buscar_hoteles(
+    async def _tarea_hoteles(checkin: str, checkout: str) -> dict:
+        if not incluir_hotel:
+            return {"hoteles": []}
+        return await buscar_hoteles(
             ciudad=ciudad_destino,
-            checkin=fecha_salida,
-            checkout=fecha_regreso,
+            checkin=checkin,
+            checkout=checkout,
             adultos=pasajeros,
             estrellas_min=cfg["estrellas_min"],
             estrellas_max=cfg["estrellas_max"],
         )
-    else:
-        resultado_hoteles = {"hoteles": []}
 
-    # 2b. Buscar alquiler de coches si está habilitado
-    if incluir_vehiculo:
-        resultado_coches = await buscar_coches(
-            iata=destino,
-            pickup_date=fecha_salida,
-            dropoff_date=fecha_regreso,
+    async def _tarea_coches(pickup: str, dropoff: str) -> dict:
+        if not incluir_vehiculo:
+            return {"coches": []}
+        return await buscar_coches(iata=destino, pickup_date=pickup, dropoff_date=dropoff)
+
+    # 1-2. Buscar vuelos, hoteles y coches.
+    # En modo flexible las fechas definitivas dependen del resultado de vuelos,
+    # así que hoteles/coches se lanzan después; en modo exacto todo va en paralelo.
+    if modo == "flexible":
+        resultado_vuelos, fecha_salida, fecha_regreso = await _vuelos_flexibles(
+            origen, destino, fecha_salida, fecha_regreso, pasajeros, duracion_dias
+        )
+        noches = _calcular_noches(fecha_salida, fecha_regreso)
+        resultado_hoteles, resultado_coches = await asyncio.gather(
+            _tarea_hoteles(fecha_salida, fecha_regreso),
+            _tarea_coches(fecha_salida, fecha_regreso),
         )
     else:
-        resultado_coches = {"coches": []}
+        resultado_vuelos, resultado_hoteles, resultado_coches = await asyncio.gather(
+            buscar_vuelos(origen, destino, fecha_salida, fecha_regreso, pasajeros),
+            _tarea_hoteles(fecha_salida, fecha_regreso),
+            _tarea_coches(fecha_salida, fecha_regreso),
+        )
 
     # Extraer datos de los resultados
     vuelos       = resultado_vuelos.get("vuelos", [])
@@ -553,29 +610,33 @@ async def generar_plan(
         if aviso_vuelos:
             aviso = aviso_vuelos + " " + aviso
 
-    # 7. Buscar aeropuertos alternativos cercanos al destino
+    # 7. Buscar aeropuertos alternativos cercanos al destino (en paralelo)
     alternativas_aeropuerto = []
     cercanos = aeropuertos_alternativos(destino)
     if cercanos:
-        for alt in cercanos[:3]:
+        async def _vuelo_alternativo(alt: str) -> dict | None:
             try:
                 res_alt = await buscar_vuelos(origen, alt, fecha_salida, fecha_regreso, pasajeros)
                 if res_alt.get("vuelos"):
                     mejor_alt = min(res_alt["vuelos"], key=lambda v: v["precio_total"])
-                    alternativas_aeropuerto.append({
+                    return {
                         "iata": alt,
                         "nombre": _ciudad_desde_iata(alt),
                         "vuelo_mas_barato": mejor_alt["precio_total"],
                         "precision": res_alt.get("precision", "sin_resultados"),
-                    })
+                    }
             except Exception:
                 pass
+            return None
+
+        resultados_alt = await asyncio.gather(*(_vuelo_alternativo(a) for a in cercanos[:3]))
+        alternativas_aeropuerto = [r for r in resultados_alt if r]
 
     # Calcular presupuesto mínimo sugerido (sin API calls)
     presupuesto_minimo = calcular_presupuesto_minimo(
         origen=origen, destino=destino, noches=noches,
         pasajeros=pasajeros, incluir_hotel=incluir_hotel,
-        incluir_vehiculo=incluir_vehiculo,
+        incluir_vehiculo=incluir_vehiculo, tier=tier,
     )
 
     # 8. Clima y actividades del destino, en paralelo (no bloquean el plan si fallan)
@@ -601,6 +662,7 @@ async def generar_plan(
         "noches":         noches,
         "presupuesto":    presupuesto,
         "presupuesto_minimo_sugerido": presupuesto_minimo["presupuesto_minimo_sugerido"],
+        "presupuesto_maximo_sugerido": presupuesto_minimo["presupuesto_maximo_sugerido"],
         "plan_optimo":    plan_optimo,
         "alternativas":   alternativas,
         "hoteles":        hoteles_lista,

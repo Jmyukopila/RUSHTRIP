@@ -11,6 +11,7 @@ from backend.routes.cars     import router as cars_router
 from backend.routes.plan     import router as plan_router
 from backend.routes.weather  import router as weather_router
 from backend.routes.activities import router as activities_router
+from backend.routes.auth       import router as auth_router
 from core.config import settings
 from core.errors import AppError, ExternalAPIError
 from core.logging import setup_logging
@@ -20,9 +21,11 @@ async def lifespan(app: FastAPI):
     from core.http import http_client
     from core.database_cache import init_db as init_cache_db
     from core.rate_limiter import init_db as init_rate_limiter_db
+    from core.auth_db import init_db as init_auth_db
 
     init_cache_db()
     init_rate_limiter_db()
+    init_auth_db()
     from loguru import logger
     logger.info("Cache persistente y rate limiter inicializados (SQLite WAL)")
 
@@ -81,6 +84,10 @@ app = FastAPI(
             "name":        "Actividades",
             "description": "Mejores actividades y atracciones del destino (OpenTripMap)"
         },
+        {
+            "name":        "Autenticacion",
+            "description": "Registro, inicio de sesion y gestion de la cuenta"
+        },
     ]
 )
 
@@ -121,12 +128,20 @@ async def security_headers(request: Request, call_next):
     return response
 
 # ── Rate limiting persistente (por IP, sobrevive reinicios) ────────────
-from core.rate_limiter import check_rate_limit, get_remaining
+from core.rate_limiter import (
+    check_rate_limit,
+    es_ruta_api,
+    get_remaining,
+    ip_cliente,
+    normalizar_path,
+    segundos_hasta_reinicio,
+)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    path = request.url.path
-    if path in ("/health", "/", "/docs", "/openapi.json"):
+    # Solo se limitan los endpoints de la API: el resto (/, /health, /docs,
+    # assets del frontend servidos por FastAPI) no consume cupo del usuario.
+    if not es_ruta_api(request.url.path):
         return await call_next(request)
 
     # En desarrollo (DEBUG=true) no se aplica rate limiting: en local todo llega
@@ -136,9 +151,21 @@ async def rate_limit_middleware(request: Request, call_next):
     if settings.debug:
         return await call_next(request)
 
-    client_ip = request.client.host if request.client else "unknown"
+    # Path sin prefijo /api (este middleware corre antes del strip) e IP real
+    # del cliente (X-Forwarded-For detrás de proxy; si no, la de la conexión).
+    api_path = normalizar_path(request.url.path)
+    client_ip = ip_cliente(
+        request.headers.get("x-forwarded-for"),
+        request.client.host if request.client else "unknown",
+    )
 
-    allowed, remaining = check_rate_limit(client_ip, path)
+    # Conexiones directas desde la propia máquina (healthchecks, smoke tests,
+    # pruebas locales con DEBUG=false) no consumen cupo. El tráfico real de
+    # producción llega vía proxy con X-Forwarded-For y sí se contabiliza.
+    if client_ip in ("127.0.0.1", "::1", "localhost"):
+        return await call_next(request)
+
+    allowed, _ = check_rate_limit(client_ip, api_path)
     if not allowed:
         return JSONResponse(
             status_code=429,
@@ -147,10 +174,11 @@ async def rate_limit_middleware(request: Request, call_next):
                 "code": "rate_limit",
                 "detail": "Has alcanzado el límite diario de consultas. Vuelve mañana o intenta con rutas menos específicas.",
             },
+            headers={"Retry-After": str(segundos_hasta_reinicio())},
         )
 
     response = await call_next(request)
-    remaining, limit = get_remaining(client_ip, path)
+    remaining, limit = get_remaining(client_ip, api_path)
     response.headers["X-RateLimit-Remaining"] = str(remaining)
     response.headers["X-RateLimit-Limit"] = str(limit)
     return response
@@ -203,6 +231,7 @@ app.include_router(hotels_router)
 app.include_router(cars_router)
 app.include_router(weather_router)
 app.include_router(activities_router)
+app.include_router(auth_router)
 
 # ── Health check ─────────────────────────────────────────────────────────
 @app.get("/health", tags=["Root"])

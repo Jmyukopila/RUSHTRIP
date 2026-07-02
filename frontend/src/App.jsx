@@ -4,6 +4,8 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Landing from './pages/Landing';
 import Plan from './pages/Plan';
+import Login from './pages/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -43,11 +45,21 @@ export default function App() {
             }
           />
           <Route
-            path="/plan"
+            path="/login"
             element={
               <PageTransition>
-                <Plan />
+                <Login />
               </PageTransition>
+            }
+          />
+          <Route
+            path="/plan"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <Plan />
+                </PageTransition>
+              </ProtectedRoute>
             }
           />
         </Routes>

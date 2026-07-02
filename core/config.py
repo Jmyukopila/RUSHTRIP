@@ -41,6 +41,13 @@ class Settings(BaseSettings):
 
     opentripmap_api_key:  str = ""
 
+    # ─── Supabase (backend en la nube para usuarios/sesiones/reservas) ──
+    # Connection string de Postgres (usar el pooler de Supabase). Si esta VACIO,
+    # la capa de usuarios degrada a SQLite local (ver core/auth_db.py).
+    supabase_db_url:      str = ""
+    # URL del proyecto (informativa / para integraciones futuras del frontend).
+    supabase_url:         str = ""
+
     cors_origins:         str = "*"
     debug:                bool = True
 

@@ -3,6 +3,7 @@
 # Reutiliza conexiones y maneja fallos transitorios de APIs externas
 
 import asyncio
+import time
 import httpx
 from core.config import settings
 from core.errors import ExternalAPIError
@@ -13,6 +14,57 @@ _BASE_DELAY = 0.5  # segundos iniciales de backoff
 
 
 http_client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT)
+
+
+# Límites de salida por proveedor: (llamadas concurrentes máx, intervalo mínimo en s).
+# Evita que ráfagas propias (plan con aeropuertos alternativos, modo flexible, etc.)
+# agoten el rate limit del proveedor y provoquen 429 en cadena.
+_THROTTLE_CONFIG: dict[str, tuple[int, float]] = {
+    "travelpayouts": (4, 0.25),
+    "rapidapi":      (2, 1.0),
+    "hotelsnl":      (2, 12.0),  # free tier: 5 req/min
+    "opentripmap":   (4, 0.25),
+    "pexels":        (2, 2.0),
+}
+_THROTTLE_DEFAULT = (8, 0.0)
+
+
+class _ProviderThrottle:
+    """Limita concurrencia e intervalo mínimo entre llamadas a un proveedor."""
+
+    def __init__(self, max_concurrentes: int, intervalo_min: float):
+        self._sem = asyncio.Semaphore(max_concurrentes)
+        self._intervalo = intervalo_min
+        self._ultima = 0.0
+        self._lock = asyncio.Lock()
+
+    async def __aenter__(self):
+        await self._sem.acquire()
+        if self._intervalo > 0:
+            async with self._lock:
+                espera = self._ultima + self._intervalo - time.monotonic()
+                if espera > 0:
+                    await asyncio.sleep(espera)
+                self._ultima = time.monotonic()
+        return self
+
+    async def __aexit__(self, *exc):
+        self._sem.release()
+
+
+# Un throttle por (proveedor, event loop): los primitivos de asyncio quedan
+# ligados al loop donde se usan por primera vez (los tests crean loops nuevos).
+_throttles: dict[tuple[str, int], _ProviderThrottle] = {}
+
+
+def _get_throttle(provider: str) -> _ProviderThrottle:
+    loop_id = id(asyncio.get_running_loop())
+    key = (provider, loop_id)
+    throttle = _throttles.get(key)
+    if throttle is None:
+        throttle = _ProviderThrottle(*_THROTTLE_CONFIG.get(provider, _THROTTLE_DEFAULT))
+        _throttles[key] = throttle
+    return throttle
 
 
 async def request_with_retry(
@@ -48,10 +100,12 @@ async def request_with_retry(
         ExternalAPIError: Si todos los reintentos fallan
     """
     last_error = None
+    throttle = _get_throttle(provider)
 
     for attempt in range(max_retries + 1):
         try:
-            response = await http_client.request(method, url, **kwargs)
+            async with throttle:
+                response = await http_client.request(method, url, **kwargs)
 
             if response.status_code < 500 and response.status_code != 429:
                 return response

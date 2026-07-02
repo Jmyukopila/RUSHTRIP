@@ -7,7 +7,8 @@ import logging
 import math
 import random
 from core.config import settings
-from core.http import http_client
+from core.errors import ExternalAPIError
+from core.http import request_with_retry
 from core.database_cache import cache_get, cache_get_stale, cache_set
 
 logger = logging.getLogger(__name__)
@@ -359,13 +360,24 @@ async def _buscar(
         params["return_at"] = fecha_regreso
 
     try:
+        # request_with_retry maneja backoff en 429/5xx/timeouts; aquí solo se
+        # rota de token cuando la key está agotada o es inválida (401/403/429).
         res = None
         for i, token in enumerate(tokens):
-            res = await http_client.get(
-                "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
-                params={**params, "token": token},
-            )
-            if res.status_code in (401, 403, 429) and i < len(tokens) - 1:
+            try:
+                res = await request_with_retry(
+                    "GET",
+                    "https://api.travelpayouts.com/aviasales/v3/prices_for_dates",
+                    provider="travelpayouts",
+                    max_retries=2,
+                    params={**params, "token": token},
+                )
+            except ExternalAPIError as e:
+                if i < len(tokens) - 1:
+                    logger.warning(f"Token Travelpayouts #{i + 1} falló ({e}), rotando al siguiente")
+                    continue
+                raise
+            if res.status_code in (401, 403) and i < len(tokens) - 1:
                 logger.warning(f"Token Travelpayouts #{i + 1} respondió HTTP {res.status_code}, rotando al siguiente")
                 continue
             break
@@ -421,6 +433,9 @@ async def _buscar(
     except httpx.HTTPStatusError as e:
         logger.error(f"Error HTTP vuelos: {e.response.status_code} - {e.response.text}")
         return {"aviso": None, "vuelos": [], "error": f"Error de API (HTTP {e.response.status_code})"}
+    except ExternalAPIError as e:
+        logger.error(f"Error de API vuelos: {e}")
+        return {"aviso": None, "vuelos": [], "error": "Error de conexion con el proveedor de vuelos"}
     except httpx.RequestError as e:
         logger.error(f"Error de conexion vuelos: {e}")
         return {"aviso": None, "vuelos": [], "error": "Error de conexion con el proveedor de vuelos"}

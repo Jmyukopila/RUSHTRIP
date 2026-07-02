@@ -18,13 +18,17 @@ def temp_dbs(tmp_path, monkeypatch):
     """Redirige el cache persistente y el rate limiter a SQLite temporales por test."""
     import core.database_cache as dc
     import core.rate_limiter as rl
+    import core.auth_db as ad
 
     monkeypatch.setattr(dc, "_DB_DIR", tmp_path)
     monkeypatch.setattr(dc, "_DB_PATH", tmp_path / "cache.db")
     monkeypatch.setattr(rl, "_DB_DIR", tmp_path)
     monkeypatch.setattr(rl, "_DB_PATH", tmp_path / "rate.db")
+    monkeypatch.setattr(ad, "_DB_DIR", tmp_path)
+    monkeypatch.setattr(ad, "_DB_PATH", tmp_path / "auth.db")
     dc.init_db()
     rl.init_db()
+    ad.init_db()
     yield
 
 

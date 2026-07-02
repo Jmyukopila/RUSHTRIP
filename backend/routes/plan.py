@@ -2,10 +2,12 @@
 # API endpoint para generar planes de viaje optimizados por presupuesto
 # Endpoint principal de RushTrip que combina todos los servicios
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from services.plan import generar_plan, resolver_iata, calcular_presupuesto_minimo
+from services.plan import generar_plan, resolver_iata, calcular_presupuesto_minimo, IATA_A_CIUDAD
 from services.hotels import _calcular_noches
+from backend.routes.auth import requerir_usuario
+from services import auth as auth_service
 from datetime import datetime
 import re
 
@@ -127,7 +129,7 @@ class PlanRequest(BaseModel):
     """,
     response_description="Plan de viaje optimizado para el presupuesto dado",
 )
-async def crear_plan(body: PlanRequest):
+async def crear_plan(body: PlanRequest, usuario: dict = Depends(requerir_usuario)):
     """
     Endpoint principal de RushTrip: genera un plan de viaje por presupuesto.
 
@@ -199,6 +201,11 @@ async def crear_plan(body: PlanRequest):
         duracion_dias=    body.duracion_dias,
     )
 
+    # Registrar el destino en las preferencias del usuario (no critico).
+    auth_service.registrar_destino_buscado(
+        usuario["id"], destino_iata, IATA_A_CIUDAD.get(destino_iata, "")
+    )
+
     return resultado
 
 
@@ -217,6 +224,7 @@ async def crear_plan(body: PlanRequest):
         pasajeros: Número de pasajeros (default: 1)
         incluir_hotel: Incluir hotel (default: true)
         incluir_vehiculo: Incluir vehículo (default: false)
+        tier: Nivel de calidad (economico/estandar/premium, default: estandar)
     """,
 )
 async def min_budget(
@@ -227,6 +235,7 @@ async def min_budget(
     pasajeros: int = 1,
     incluir_hotel: bool = True,
     incluir_vehiculo: bool = False,
+    tier: str = "estandar",
 ):
     try:
         origen_iata = await resolver_iata(origen)
@@ -243,6 +252,7 @@ async def min_budget(
         pasajeros=pasajeros,
         incluir_hotel=incluir_hotel,
         incluir_vehiculo=incluir_vehiculo,
+        tier=tier if tier in ("economico", "estandar", "premium") else "estandar",
     )
 
     return resultado

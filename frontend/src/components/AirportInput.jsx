@@ -27,13 +27,23 @@ function CheckIcon() {
   );
 }
 
+// Los navegadores en Windows no renderizan los emoji de bandera (muestran el
+// código ISO en su lugar), así que usamos imágenes reales de bandera (flagcdn).
 function FlagIcon({ code }) {
   if (!code) return null;
-  const flag = code.slice(0, 2).toLowerCase();
+  const cc = code.slice(0, 2).toLowerCase();
   return (
-    <span className="text-base leading-none w-5 text-center shrink-0" aria-hidden="true">
-      {String.fromCodePoint(...[...flag].map(c => 0x1F1E6 + c.charCodeAt(0) - 97))}
-    </span>
+    <img
+      src={`https://flagcdn.com/24x18/${cc}.png`}
+      srcSet={`https://flagcdn.com/48x36/${cc}.png 2x`}
+      width="24"
+      height="18"
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      className="w-5 h-auto rounded-[2px] shrink-0 object-cover"
+      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+    />
   );
 }
 
@@ -102,6 +112,9 @@ export default function AirportInput({ label, value, onChange, placeholder = 'Bu
   }
   function _readItemCountry(item) {
     return item.country_name || item.pais || item.country || '';
+  }
+  function _readItemCountryCode(item) {
+    return item.pais_codigo || item.country_code || item.codigo_pais || '';
   }
 
   const handleSelect = (item) => {
@@ -194,6 +207,7 @@ export default function AirportInput({ label, value, onChange, placeholder = 'Bu
               const code = _readItemCode(item);
               const name = _readItemName(item);
               const country = _readItemCountry(item);
+              const countryCode = _readItemCountryCode(item);
               const isActive = selected && (_readItemCode(selected) === code);
               return (
                 <button
@@ -205,7 +219,7 @@ export default function AirportInput({ label, value, onChange, placeholder = 'Bu
                       : 'hover:bg-card text-text'
                   }`}
                 >
-                  <FlagIcon code={country} />
+                  <FlagIcon code={countryCode} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{name}</span>

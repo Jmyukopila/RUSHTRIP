@@ -162,9 +162,43 @@ La suite es offline (mockea la red, no requiere API keys) y cubre la lógica de 
 
 ## API Endpoints
 
+### Autenticación
+
+RushTrip usa sesiones con **tokens Bearer opacos** (sin JWT ni dependencias externas): las contraseñas se guardan con PBKDF2-HMAC-SHA256 (stdlib) y los tokens viven en la tabla `sesiones` (30 días de validez). Para consumir un endpoint protegido, envía el token en la cabecera `Authorization: Bearer <token>`.
+
+**Almacenamiento híbrido:** las cuentas, sesiones, destinos preferidos y reservas se guardan en **Supabase (Postgres)** cuando `SUPABASE_DB_URL` está configurado en `.env`; si está vacío, degrada a **SQLite local** (`rushtrip_cache.db`), igual que el caché y el rate-limiter. La API es idéntica en ambos casos. Tablas en Supabase: `usuarios`, `sesiones`, `destinos_preferidos`, `reservas` (con trigger que mantiene `usuarios.reservas_count`).
+
+**Endpoint protegido:** `POST /plan/` requiere sesión (401 si falta o el token es inválido). El resto de endpoints son públicos.
+
+#### `POST /auth/register` — Crear cuenta
+
+Body: `{ "email": "tu@correo.com", "password": "min-8-caracteres", "nombre": "Nombre completo", "pais": "Colombia", "telefono": "+57 300 123 4567" }`. Obligatorios: `email`, `password`, `nombre`, `pais`. El `telefono` es opcional (si se envía, debe ser un número válido).
+
+Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais" }, "token": "<bearer>" }`. Errores `422`: email inválido, contraseña < 8 caracteres, nombre/teléfono/país faltantes o inválidos, o email ya registrado.
+
+#### `POST /auth/login` — Iniciar sesión
+
+Body: `{ "email", "password" }`. Respuesta `200`: `{ "usuario", "token" }`. Credenciales incorrectas → `422` con mensaje genérico.
+
+#### `POST /auth/logout` — Cerrar sesión
+
+Invalida el token de la cabecera `Authorization`. Respuesta `200`: `{ "ok": true }`.
+
+#### `GET /auth/me` — Perfil del usuario actual
+
+Requiere `Authorization: Bearer <token>`. Respuesta `200`: `{ "usuario": { "id", "email", "nombre", "telefono", "pais", "reservas_count", "fecha_registro", "ultimo_acceso", "destinos_preferidos": [ { "destino_iata", "ciudad", "veces", "favorito", "ultimo_uso" } ] } }`; `401` si no hay sesión válida.
+
+#### `POST /auth/reservas` — Guardar una reserva confirmada
+
+Requiere sesión. Body (a partir de un plan generado): `{ "origen", "destino", "fecha_salida", "fecha_regreso", "total", "pasajeros", "tier", "presupuesto", "dentro_presupuesto", "incluir_hotel", "incluir_vehiculo", "precision", "ciudad_destino", "detalle" }`. Obligatorios: `origen`, `destino` (IATA), `fecha_salida`, `fecha_regreso`, `total`. `detalle` es el snapshot JSON del `plan_optimo`. Respuesta `201`: `{ "ok": true, "reserva_id": <int> }`. Incrementa `reservas_count` y refuerza el destino en las preferencias.
+
+#### `GET /auth/reservas` — Historial de reservas
+
+Requiere sesión. Respuesta `200`: `{ "reservas": [ { "id", "origen", "destino", "fecha_salida", "fecha_regreso", "pasajeros", "tier", "presupuesto", "total", "dentro_presupuesto", "incluir_hotel", "incluir_vehiculo", "precision", "detalle", "estado", "created_at" } ] }`.
+
 ### `POST /plan/` — Generar plan de viaje
 
-`POST /plan/`
+`POST /plan/`  🔒 **requiere sesión** (`Authorization: Bearer <token>`)
 
 Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y presupuesto; resuelve aeropuertos automáticamente y devuelve el mejor plan disponible.
 
@@ -508,9 +542,9 @@ Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de 
 **Response (200):**
 ```json
 [
-  { "codigo": "MAD", "nombre": "Madrid-Barajas", "pais": "España" },
-  { "codigo": "MAD", "nombre": "Madrid", "pais": "España" },
-  { "codigo": "LCG", "nombre": "A Coruña", "pais": "España" }
+  { "codigo": "MAD", "nombre": "Madrid-Barajas", "pais": "España", "pais_codigo": "ES" },
+  { "codigo": "MAD", "nombre": "Madrid", "pais": "España", "pais_codigo": "ES" },
+  { "codigo": "LCG", "nombre": "A Coruña", "pais": "España", "pais_codigo": "ES" }
 ]
 ```
 
@@ -600,23 +634,26 @@ Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de 
 
 ---
 
-### `GET /min-budget/` — Presupuesto mínimo sugerido
+### `GET /min-budget/` — Presupuesto mínimo y máximo sugerido
 
-`GET /plan/min-budget/?origen=Bogotá&destino=Madrid&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1&incluir_hotel=true&incluir_vehiculo=false`
+`GET /plan/min-budget/?origen=Bogotá&destino=Madrid&fecha_salida=2026-12-15&fecha_regreso=2026-12-22&pasajeros=1&incluir_hotel=true&incluir_vehiculo=false&tier=estandar`
 
-Calcula un presupuesto mínimo usando precios de referencia estáticos — **no hace llamadas a APIs externas**.
+Calcula un presupuesto mínimo y máximo sugerido usando precios de referencia estáticos — **no hace llamadas a APIs externas**. Ambos valores varían por **país** (precios de referencia por destino) y por **tier** (`economico` / `estandar` / `premium`): el tier económico rebaja el mínimo y ajusta poco el máximo; el premium sube ambos.
+
+**Parámetros:** `origen`, `destino`, `fecha_salida`, `fecha_regreso`, `pasajeros` (default 1), `incluir_hotel` (default true), `incluir_vehiculo` (default false), `tier` (default `estandar`).
 
 **Response (200):**
 ```json
 {
-  "presupuesto_minimo": 450.00,
+  "presupuesto_minimo_sugerido": 2442.00,
+  "presupuesto_maximo_sugerido": 5328.00,
+  "tier": "estandar",
   "desglose": {
-    "vuelo": { "minimo": 300, "maximo": 600 },
-    "hotel": { "minimo": 35, "maximo": 100 },
-    "coche": { "minimo": 25, "maximo": 60 }
-  },
-  "noches": 7,
-  "pasajeros": 1
+    "vuelo_minimo": 960.00,
+    "hotel_minimo": 1260.00,
+    "coche_minimo": 0.00,
+    "margen": 222.00
+  }
 }
 ```
 
@@ -663,12 +700,13 @@ La API aplica límites diarios por IP (persisten en SQLite, sobreviven reinicios
 | `GET /flights/` | 100 requests |
 | `GET /hotels/` | 100 requests |
 | `GET /cars/` | 100 requests |
-| `GET /airports/` | 100 requests |
+| `GET /airports/` | 500 requests |
 | `GET /weather/` | 100 requests |
 | `GET /activities/` | 100 requests |
+| `POST /auth/*` | 50 requests |
 | Otros | 200 requests |
 
-Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. Los endpoints `/health`, `/`, `/docs` y `/openapi.json` no están limitados.
+Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`; el 429 incluye `Retry-After` (segundos hasta el reinicio diario). Solo se limitan las rutas de la API (con o sin prefijo `/api`): `/health`, `/`, `/docs` y los estáticos del frontend no consumen cupo. Detrás de un proxy, la IP del cliente se toma del primer salto de `X-Forwarded-For`; las conexiones directas desde localhost (healthchecks, pruebas locales) están exentas.
 
 ---
 
@@ -686,9 +724,9 @@ Las respuestas incluyen headers `X-RateLimit-Remaining` y `X-RateLimit-Limit`. L
 
 | Servicio | Primario | Fallback |
 |----------|----------|----------|
-| Vuelos | Travelpayouts (fecha exacta) | Travelpayouts (mes) → Travelpayouts (sin fecha) |
+| Vuelos | Travelpayouts (fecha exacta) | Travelpayouts (mes) → Travelpayouts (sin fecha) → cache stale → estimados |
 | Hoteles | Hotels.nl API (datos reales) | Precios estimados por destino |
-| Coches | RapidAPI | Precios estimados por destino |
+| Coches | Cache SQLite → RapidAPI | Cache stale → precios estimados por destino |
 | Fotos hoteles | Pexels API | Placehold.co |
 | Resolución ciudad → IATA | Travelpayouts autocomplete | Cache local |
 | Clima | Open-Meteo pronóstico (≤16 días) | Clima típico histórico (3 años) → cache stale |

@@ -218,20 +218,23 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
       pasajeros: form.pasajeros,
       incluir_hotel: form.incluir_hotel,
       incluir_vehiculo: form.incluir_vehiculo,
+      tier: form.tier,
     })
       .then((data) => {
         setMinBudgetData(data);
         const suggested = data?.presupuesto_minimo_sugerido || 800;
-        setForm((prev) => ({
-          ...prev,
-          presupuesto: Math.max(prev.presupuesto, suggested),
-        }));
+        const maxSug = data?.presupuesto_maximo_sugerido;
+        setForm((prev) => {
+          let p = Math.max(prev.presupuesto, suggested);
+          if (maxSug) p = Math.min(p, maxSug);
+          return { ...prev, presupuesto: p };
+        });
       })
       .catch(() => {
         setMinBudgetData(null);
       })
       .finally(() => setLoadingMinBudget(false));
-  }, [form.origenCode, form.destinoCode, form.fecha_salida, form.duracion_dias, form.pasajeros, form.incluir_hotel, form.incluir_vehiculo]);
+  }, [form.origenCode, form.destinoCode, form.fecha_salida, form.duracion_dias, form.pasajeros, form.incluir_hotel, form.incluir_vehiculo, form.tier]);
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -239,7 +242,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
   };
 
   const min = minBudgetData?.presupuesto_minimo_sugerido || 300;
-  const max = Math.max(min * 4, 2000);
+  const max = minBudgetData?.presupuesto_maximo_sugerido || Math.max(min * 4, 2000);
 
   function _calcularRegreso(salida, dias) {
     if (!salida) return '';

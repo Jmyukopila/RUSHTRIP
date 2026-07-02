@@ -7,9 +7,10 @@ import re
 from datetime import date
 from urllib.parse import quote
 from core.config import settings
-from core.http import http_client
+from core.http import request_with_retry
 from core.database_cache import cache_get, cache_get_stale, cache_set
 from core.cache import TTLCache
+from services.airports import buscar_aeropuerto
 from services.hotels_nl import buscar_hoteles as buscar_hoteles_nl
 from services.hotels_nl import obtener_detalle as obtener_detalle_nl
 
@@ -156,8 +157,11 @@ async def _enriquecer_con_fotos(ciudad: str, hoteles: list) -> list:
     fotos = _PEXELS_CACHE.get(cache_key)
     if fotos is None:
         try:
-            res = await http_client.get(
+            res = await request_with_retry(
+                "GET",
                 "https://api.pexels.com/v1/search",
+                provider="pexels",
+                max_retries=1,
                 params={"query": f"{ciudad} hotel", "per_page": 4, "orientation": "landscape"},
                 headers={"Authorization": settings.pexels_api_key},
             )
@@ -178,21 +182,20 @@ async def _enriquecer_con_fotos(ciudad: str, hoteles: list) -> list:
 
 
 async def _buscar_ciudad(ciudad: str) -> dict | None:
-    """Obtiene info de una ciudad via Travelpayouts autocomplete."""
+    """
+    Obtiene info de una ciudad reutilizando el autocomplete de aeropuertos
+    (mismo endpoint de Travelpayouts, con cache en memoria + SQLite compartido).
+    """
     try:
-        res = await http_client.get(
-            "https://autocomplete.travelpayouts.com/places2",
-            params={"term": ciudad, "locale": "es", "types": "city"},
-        )
-        res.raise_for_status()
-        data = res.json()
-        if not data:
+        resultados = await buscar_aeropuerto(ciudad)
+        if not resultados:
             return None
-        city = data[0]
+        city = resultados[0]
         return {
-            "nombre": city.get("name", ciudad),
-            "codigo": city.get("code", ""),
-            "pais": city.get("country_name", ""),
+            "nombre": city.get("nombre") or ciudad,
+            "codigo": city.get("codigo") or "",
+            "pais": city.get("pais") or "",
+            "pais_codigo": (city.get("pais_codigo") or "").upper(),
         }
     except Exception as e:
         logger.warning(f"Travelpayouts autocomplete fallo para '{ciudad}': {e}")
@@ -288,23 +291,39 @@ async def buscar_hoteles(
             "precision": cached.get("precision", "estimada"),
         }
 
-    nombre_ciudad = ciudad
+    # Resolver la ciudad primero (cacheado): da el nombre canónico para el
+    # geocoder de Hotels.nl y el país esperado para validar sus resultados.
+    city_info = await _buscar_ciudad(ciudad)
+    nombre_ciudad = city_info["nombre"] if city_info else ciudad
+    pais_esperado = city_info["pais_codigo"] if city_info else ""
     hoteles = None
 
     # Nivel 1: Hotels.nl API (datos reales + comisiones)
     if settings.hotelsnl_api_key:
-        logger.info(f"Buscando hoteles para '{ciudad}' via Hotels.nl API")
+        logger.info(f"Buscando hoteles para '{nombre_ciudad}' via Hotels.nl API")
         hoteles_nl = await buscar_hoteles_nl(
-            location=ciudad,
+            location=nombre_ciudad,
             checkin=checkin,
             checkout=checkout,
             persons=adultos,
             currency="USD",
         )
+        # Validar el país: si Hotels.nl no reconoce la ubicación devuelve
+        # hoteles de otro sitio (p.ej. Ámsterdam al buscar 'ZAG')
+        if hoteles_nl and pais_esperado:
+            coincidentes = [h for h in hoteles_nl if (h.get("pais") or "").upper() == pais_esperado]
+            if not coincidentes:
+                logger.warning(
+                    f"Hotels.nl devolvió hoteles fuera de {pais_esperado} para '{nombre_ciudad}' "
+                    f"(ej: {hoteles_nl[0].get('ciudad')}, {hoteles_nl[0].get('pais')}); descartando"
+                )
+                hoteles_nl = None
+            else:
+                hoteles_nl = coincidentes
         if hoteles_nl is not None:
             hoteles = hoteles_nl
             if hoteles:
-                nombre_ciudad = hoteles[0].get("ciudad", ciudad)
+                nombre_ciudad = hoteles[0].get("ciudad", nombre_ciudad)
             # Asignar link de reserva (Travelpayouts -> Booking.com del hotel concreto)
             for h in hoteles:
                 h["link_reserva"] = _link_reserva_tp(
@@ -313,9 +332,7 @@ async def buscar_hoteles(
 
     # Nivel 2: Fallback a Travelpayouts + precios de referencia
     if hoteles is None:
-        logger.info(f"Buscando hoteles para '{ciudad}' via Travelpayouts + afiliados")
-        city_info = await _buscar_ciudad(ciudad)
-        nombre_ciudad = city_info["nombre"] if city_info else ciudad
+        logger.info(f"Buscando hoteles para '{nombre_ciudad}' via Travelpayouts + afiliados")
         codigo = city_info["codigo"] if city_info else ""
         noches = _calcular_noches(checkin, checkout)
         precio_noche = _precio_referencia(codigo) if codigo else _precio_referencia(ciudad)
