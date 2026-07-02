@@ -11,6 +11,7 @@ export default function Login() {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [pais, setPais] = useState('');
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -29,10 +30,14 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+    if (esRegistro && !aceptaTerminos) {
+      setError('Debes aceptar los Términos de Servicio y la Política de Privacidad para crear tu cuenta.');
+      return;
+    }
     setEnviando(true);
     try {
       if (esRegistro) {
-        await register({ email, password, nombre, telefono, pais });
+        await register({ email, password, nombre, telefono, pais, aceptaTerminos });
       } else {
         await login({ email, password });
       }
@@ -163,10 +168,41 @@ export default function Login() {
               </div>
             </div>
 
+            {esRegistro && (
+              <label htmlFor="acepta-terminos" className="flex items-start gap-2.5 text-sm text-muted cursor-pointer">
+                <input
+                  id="acepta-terminos"
+                  type="checkbox"
+                  required
+                  checked={aceptaTerminos}
+                  onChange={(e) => setAceptaTerminos(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 shrink-0 rounded border-border-100 text-accent accent-accent focus:ring-accent/40"
+                />
+                <span>
+                  He leído y acepto los{' '}
+                  <Link to="/terminos" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                    Términos de Servicio
+                  </Link>{' '}
+                  y la{' '}
+                  <Link to="/privacidad" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                    Política de Privacidad
+                  </Link>.
+                </span>
+              </label>
+            )}
+
             {error && (
               <div className="flex items-start gap-2 text-sm text-accent bg-accent/5 border border-accent/20 rounded-lg px-3 py-2.5">
                 <IconWarning className="w-4 h-4 mt-0.5 shrink-0" />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {!esRegistro && (
+              <div className="-mt-1 text-right">
+                <Link to="/recuperar" className="text-sm text-accent hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
               </div>
             )}
 

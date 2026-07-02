@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { IconUser, IconLogout } from './icons';
+import { IconUser, IconLogout, LogoMark } from './icons';
 
 const NAV_LINKS = [
   { label: 'Inicio', path: '/' },
@@ -15,6 +15,11 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
+
+  // "Mis reservas" solo tiene sentido con sesion iniciada.
+  const links = isAuthenticated
+    ? [...NAV_LINKS, { label: 'Mis reservas', path: '/reservas' }]
+    : NAV_LINKS;
 
   async function handleLogout() {
     setOpen(false);
@@ -65,17 +70,14 @@ export default function Navbar() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
           <div className="flex items-center justify-between h-full">
             <Link to="/" className="flex items-center gap-2.5 group">
-              <svg viewBox="0 0 32 32" className="w-7 h-7 sm:w-8 sm:h-8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="16" cy="16" r="14" stroke="#E8611A" strokeWidth="1.5" opacity="0.3" fill="#E8611A" fillOpacity="0.05" />
-                <path d="M10 20 L16 8 L22 20 M12 16 H20" stroke="#E8611A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <LogoMark className="w-7 h-7 sm:w-8 sm:h-8" />
               <span className="font-display text-xl sm:text-2xl tracking-tight">
                 Rush<span className="text-accent">Trip</span>
               </span>
             </Link>
 
             <div className="hidden sm:flex items-center gap-1">
-              {NAV_LINKS.map((link) => {
+              {links.map((link) => {
                 const active = location.pathname === link.path;
                 return (
                   <Link
@@ -142,10 +144,7 @@ export default function Navbar() {
           <div className="fixed top-0 right-0 bottom-0 w-72 z-50 bg-white/90 backdrop-blur-xl border-l border-border-200 shadow-xl animate-slide-up-reveal">
             <div className="flex items-center justify-between p-5 border-b border-border-100">
               <Link to="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-                <svg viewBox="0 0 32 32" className="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="16" cy="16" r="14" stroke="#E8611A" strokeWidth="1.5" opacity="0.3" fill="#E8611A" fillOpacity="0.05" />
-                  <path d="M10 20 L16 8 L22 20 M12 16 H20" stroke="#E8611A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <LogoMark className="w-6 h-6" />
                 <span className="font-display text-lg tracking-tight">
                   Rush<span className="text-accent">Trip</span>
                 </span>
@@ -161,7 +160,7 @@ export default function Navbar() {
               </button>
             </div>
             <div className="p-4 flex flex-col gap-1">
-              {NAV_LINKS.map((link) => (
+              {links.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}

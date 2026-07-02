@@ -308,7 +308,9 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
       const { createPlan } = await import('../api/client');
       const data = await createPlan(payload);
       if (onPlanError) onPlanError(null);
-      if (onPlanCreated) onPlanCreated(data);
+      // El backend no devuelve el tier en la respuesta: se conserva el del
+      // formulario para que "Guardar plan" lo registre en la reserva.
+      if (onPlanCreated) onPlanCreated({ ...data, tier: form.tier });
     } catch (err) {
       const msg = err?.response?.data?.detail || err?.message || 'Error al crear el plan';
       setErrors((prev) => ({ ...prev, submit: msg }));
