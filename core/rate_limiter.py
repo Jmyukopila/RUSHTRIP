@@ -5,7 +5,7 @@
 import logging
 import sqlite3
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -53,16 +53,59 @@ LIMITS: dict[str, int] = {
     "flights": 100,
     "hotels": 100,
     "cars": 100,
-    "airports": 100,
+    # El autocomplete se dispara por tecleo del usuario: necesita margen amplio
+    "airports": 500,
     "weather": 100,
     "activities": 100,
+    "auth": 50,
     "default": 200,
 }
+
+_API_PREFIXES = ("/plan", "/flights", "/hotels", "/cars", "/airports", "/weather", "/activities", "/auth")
+
+
+def normalizar_path(path: str) -> str:
+    """
+    Quita el prefijo /api si está presente. El middleware de rate limit corre
+    ANTES del strip de /api (es el más externo), así que en producción los
+    paths llegan como /api/plan y sin normalizar caerían todos en 'default'.
+    """
+    if path.startswith("/api/"):
+        return path[4:]
+    if path == "/api":
+        return "/"
+    return path
+
+
+def es_ruta_api(path: str) -> bool:
+    """True si el path (con o sin prefijo /api) corresponde a un endpoint de la API."""
+    return normalizar_path(path).startswith(_API_PREFIXES)
+
+
+def ip_cliente(forwarded_for: Optional[str], fallback: str) -> str:
+    """
+    Extrae la IP real del cliente desde X-Forwarded-For (primer salto).
+    Detrás de un proxy (Vercel, nginx) request.client.host es la IP del proxy:
+    sin esto, todos los usuarios compartirían el mismo bucket de rate limit.
+    """
+    if forwarded_for:
+        primera = forwarded_for.split(",")[0].strip()
+        if primera:
+            return primera
+    return fallback
+
+
+def segundos_hasta_reinicio() -> int:
+    """Segundos hasta la próxima medianoche local (cuando se reinician los contadores)."""
+    ahora = datetime.now()
+    manana = (ahora + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(int((manana - ahora).total_seconds()), 60)
 
 
 def _endpoint_group(path: str) -> str:
     """Agrupa rutas en categorías de límite."""
-    for prefix in ("/plan", "/flights", "/hotels", "/cars", "/airports", "/weather", "/activities"):
+    path = normalizar_path(path)
+    for prefix in _API_PREFIXES:
         if path.startswith(prefix):
             return prefix.lstrip("/")
     return "default"

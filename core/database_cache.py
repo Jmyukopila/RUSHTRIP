@@ -20,6 +20,10 @@ _DB_PATH = _DB_DIR / "rushtrip_cache.db"
 # Lock de escritura para evitar race conditions entre workers
 _write_lock = threading.Lock()
 
+# Las entradas vencidas se retienen este tiempo extra antes de borrarse:
+# son el fallback de cache_get_stale cuando la API del proveedor falla
+_STALE_RETENTION = 7 * 24 * 3600
+
 
 def _get_db() -> sqlite3.Connection:
     """Abre conexion SQLite en WAL mode para lectura/escritura."""
@@ -61,13 +65,17 @@ def _init_db():
 
 
 def _cleanup():
-    """Elimina todas las entradas expiradas de la tabla."""
+    """
+    Elimina entradas expiradas hace más de _STALE_RETENTION.
+    Las expiradas recientes se conservan: cache_get_stale las usa como
+    fallback cuando el proveedor externo no responde.
+    """
     try:
         with _get_db() as conn:
             now = time.time()
             conn.execute(
-                "DELETE FROM api_cache WHERE created_at + ttl_seconds < ?",
-                (now,),
+                "DELETE FROM api_cache WHERE created_at + ttl_seconds + ? < ?",
+                (_STALE_RETENTION, now),
             )
             conn.commit()
     except Exception as e:
@@ -95,9 +103,8 @@ def cache_get(key: str) -> Optional[Any]:
             value_json, created_at, ttl = row["value"], row["created_at"], row["ttl_seconds"]
             if time.time() - created_at < ttl:
                 return json.loads(value_json)
-            # Expirado: eliminar
-            conn.execute("DELETE FROM api_cache WHERE key = ?", (key,))
-            conn.commit()
+            # Expirado: NO se borra aquí — queda disponible para cache_get_stale
+            # como fallback si la API falla (lo purga _cleanup pasada la retención)
             return None
     except Exception as e:
         logger.warning(f"Cache get error: {e}")

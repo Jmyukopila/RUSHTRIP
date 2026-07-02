@@ -2,12 +2,15 @@
 # Busca aeropuertos y ciudades por nombre
 # No necesita API key - es publica de Travelpayouts
 
-import httpx
-from core.http import http_client
+from core.http import request_with_retry
 from core.cache import TTLCache
+from core.database_cache import cache_get, cache_get_stale, cache_set
 
 # Cache en memoria para busquedas de aeropuertos (TTL de 1 hora)
 _aeropuertos_cache = TTLCache(ttl_seconds=3600)
+
+# Cache persistente: los aeropuertos de una ciudad casi no cambian (7 dias)
+_CACHE_TTL = 7 * 24 * 3600
 
 # Grupos de aeropuertos alternativos cercanos a cada ciudad principal
 # Cada grupo lista aeropuertos alternativos que sirven a la misma area metropolitana
@@ -85,18 +88,28 @@ async def buscar_aeropuerto(texto: str) -> list[dict]:
         texto: Termino de busqueda del usuario
 
     Returns:
-        Lista de diccionarios con 'nombre', 'pais' y 'codigo' (IATA)
+        Lista de diccionarios con 'nombre', 'pais', 'pais_codigo' (ISO-2) y 'codigo' (IATA)
     """
-    # Verificar cache simple (en memoria)
+    # Nivel 0: cache en memoria (rapidisimo, por proceso)
     cache_key = texto.lower().strip()
     cached = _aeropuertos_cache.get(cache_key)
     if cached is not None:
         return cached
 
+    # Nivel 1: cache persistente SQLite (sobrevive reinicios, compartido entre workers)
+    key_sqlite = f"airports:{cache_key}"
+    persistido = cache_get(key_sqlite)
+    if persistido is not None:
+        _aeropuertos_cache.set(cache_key, persistido)
+        return persistido
+
     try:
         # Llamada a API publica de Travelpayouts para autocompletado
-        res = await http_client.get(
+        res = await request_with_retry(
+            "GET",
             "https://autocomplete.travelpayouts.com/places2",
+            provider="travelpayouts",
+            max_retries=1,
             params={
                 "term":   texto,
                 "locale": "es",
@@ -110,13 +123,16 @@ async def buscar_aeropuerto(texto: str) -> list[dict]:
         resultados = []
         for lugar in datos:
             resultados.append({
-                "nombre": lugar.get("name"),
-                "pais":   lugar.get("country_name"),
-                "codigo": lugar.get("code"),
+                "nombre":      lugar.get("name"),
+                "pais":        lugar.get("country_name"),
+                "pais_codigo": lugar.get("country_code"),
+                "codigo":      lugar.get("code"),
             })
 
         # Guardar en cache para proximas busquedas
         _aeropuertos_cache.set(cache_key, resultados)
+        if resultados:
+            cache_set(key_sqlite, resultados, provider="travelpayouts", ttl_seconds=_CACHE_TTL)
         return resultados
 
     except Exception as e:
@@ -125,4 +141,7 @@ async def buscar_aeropuerto(texto: str) -> list[dict]:
         cached = _aeropuertos_cache.get_expired(cache_key)
         if cached is not None:
             return cached
+        stale = cache_get_stale(key_sqlite)
+        if stale is not None:
+            return stale
         return []

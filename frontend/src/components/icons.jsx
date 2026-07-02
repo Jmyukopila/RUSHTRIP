@@ -250,6 +250,62 @@ export function IconUsers({ className = 'w-4 h-4' }) {
   );
 }
 
+export function IconUser({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="3.3" />
+      <path d="M5 20 C5 16 8 13.7 12 13.7 C16 13.7 19 16 19 20" />
+    </svg>
+  );
+}
+
+export function IconMail({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3.5 6.5 L12 12.5 L20.5 6.5" />
+    </svg>
+  );
+}
+
+export function IconLock({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M8 10.5 V7.5 C8 5.3 9.8 3.5 12 3.5 C14.2 3.5 16 5.3 16 7.5 V10.5" />
+      <circle cx="12" cy="15" r="1.3" />
+    </svg>
+  );
+}
+
+export function IconPhone({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 3.5 H9 L10.5 8 L8.5 9.5 C9.4 11.5 11 13.1 13 14 L14.5 12 L19 13.5 V16 C19 17.4 17.9 18.5 16.5 18.4 C9.6 18 5 13.4 4.6 6.5 C4.5 5.1 5.6 4 6.5 3.5 Z" />
+    </svg>
+  );
+}
+
+export function IconGlobe({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12 H20.5" />
+      <path d="M12 3.5 C14.5 6 15.7 9 15.7 12 C15.7 15 14.5 18 12 20.5 C9.5 18 8.3 15 8.3 12 C8.3 9 9.5 6 12 3.5 Z" />
+    </svg>
+  );
+}
+
+export function IconLogout({ className = 'w-4 h-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 4.5 H6.5 C5.4 4.5 4.5 5.4 4.5 6.5 V17.5 C4.5 18.6 5.4 19.5 6.5 19.5 H15" />
+      <path d="M18.5 12 H10" />
+      <path d="M15.5 8.5 L19 12 L15.5 15.5" />
+    </svg>
+  );
+}
+
 // ── Iconos de destino (fallback cuando la foto no carga / badge de categoría) ──
 
 export function IconTower({ className = 'w-10 h-10' }) {

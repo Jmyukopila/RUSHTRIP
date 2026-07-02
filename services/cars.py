@@ -1,14 +1,21 @@
 # services/cars.py
 # Servicio de búsqueda de alquiler de coches via RapidAPI (Booking.com)
-# Incluye fallback con precios estimados si la API falla
+# Estrategia: cache SQLite → API RapidAPI → cache vencido → precios estimados
 
 import httpx
 import logging
 from datetime import date
 from core.config import settings
-from core.http import http_client
+from core.errors import ExternalAPIError
+from core.http import request_with_retry
+from core.database_cache import cache_get, cache_get_stale, cache_set
 
 logger = logging.getLogger(__name__)
+
+# TTL del cache: 24h para datos reales (la cuota de RapidAPI es mensual y
+# escasa), 10 min para estimados (permite reintentar la API real pronto)
+_CACHE_TTL = 24 * 3600
+_CACHE_TTL_ESTIMADO = 600
 
 # Precios de referencia por día en USD según código IATA de la ciudad
 # Usados como fallback cuando la API no responde
@@ -179,6 +186,21 @@ def _generar_fallback(iata: str, pickup_date: str | None, dropoff_date: str | No
     }
 
 
+def _fallback_con_cache(cache_key: str, iata: str, pickup_date: str | None, dropoff_date: str | None) -> dict:
+    """
+    Fallback cuando la API falla: primero cache vencido (datos reales viejos
+    son mejores que estimados), después estimados locales cacheados con TTL
+    corto para no golpear la API en cada plan mientras esté caída.
+    """
+    stale = cache_get_stale(cache_key)
+    if stale is not None:
+        stale["aviso"] = "Mostrando datos de cache previo. Los precios pueden no estar actualizados."
+        return stale
+    fallback = _generar_fallback(iata, pickup_date, dropoff_date)
+    cache_set(cache_key, fallback, provider="reference", ttl_seconds=_CACHE_TTL_ESTIMADO)
+    return fallback
+
+
 async def buscar_coches(
     iata: str,
     pickup_date: str | None = None,
@@ -203,6 +225,14 @@ async def buscar_coches(
     Returns:
         Dict con 'ciudad', 'coches' (lista) y 'aviso' (str|None)
     """
+    cache_key = f"cars:{iata.lower()}:{pickup_date}:{dropoff_date}:{driver_age}:{currency.lower()}"
+
+    # Nivel 0: Cache persistente
+    cached = cache_get(cache_key)
+    if cached is not None:
+        logger.debug(f"Cache hit para coches: {cache_key}")
+        return cached
+
     # Obtener coordenadas para la búsqueda
     lat, lng = _get_coords(iata)
 
@@ -228,20 +258,29 @@ async def buscar_coches(
         return _generar_fallback(iata, pickup_date, dropoff_date)
 
     try:
-        # Llamada a la API de Booking.com via RapidAPI
+        # Llamada a la API de Booking.com via RapidAPI con retry/backoff
         # (soporte multi-key con rotación en 401/403/429)
         res = None
         for i, key in enumerate(keys):
-            res = await http_client.get(
-                "https://booking-com15.p.rapidapi.com/api/v1/cars/searchCarRentals",
-                params=params,
-                headers={
-                    "x-rapidapi-key": key,
-                    "x-rapidapi-host": settings.rapidapi_host,
-                    "Content-Type": "application/json",
-                },
-            )
-            if res.status_code in (401, 403, 429) and i < len(keys) - 1:
+            try:
+                res = await request_with_retry(
+                    "GET",
+                    "https://booking-com15.p.rapidapi.com/api/v1/cars/searchCarRentals",
+                    provider="rapidapi",
+                    max_retries=1,
+                    params=params,
+                    headers={
+                        "x-rapidapi-key": key,
+                        "x-rapidapi-host": settings.rapidapi_host,
+                        "Content-Type": "application/json",
+                    },
+                )
+            except ExternalAPIError as e:
+                if i < len(keys) - 1:
+                    logger.warning(f"Key RapidAPI #{i + 1} falló ({e}), rotando a la siguiente")
+                    continue
+                raise
+            if res.status_code in (401, 403) and i < len(keys) - 1:
                 logger.warning(f"Key RapidAPI #{i + 1} respondió HTTP {res.status_code}, rotando a la siguiente")
                 continue
             break
@@ -251,7 +290,7 @@ async def buscar_coches(
         # Si la API devuelve error, usar fallback
         if isinstance(data, dict) and data.get("status") is False:
             logger.warning(f"RapidAPI coches devolvió status=false para '{iata}': {data.get('message', '')}")
-            return _generar_fallback(iata, pickup_date, dropoff_date)
+            return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)
 
         # Extraer resultados de diferentes formatos posibles
         coches = []
@@ -263,7 +302,7 @@ async def buscar_coches(
 
         # Si no hay resultados, usar fallback
         if not results:
-            return _generar_fallback(iata, pickup_date, dropoff_date)
+            return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)
 
         # Transformar datos de la API al formato unificado
         for c in results:
@@ -281,18 +320,23 @@ async def buscar_coches(
                 "foto_url": c.get("image", c.get("photo_url", "")),
             })
 
-        return {
+        resultado = {
             "ciudad": iata,
             "coches": sorted(coches, key=lambda x: x["precio_total"]),  # Ordenar por precio
             "aviso": None,
         }
+        cache_set(cache_key, resultado, provider="rapidapi", ttl_seconds=_CACHE_TTL)
+        return resultado
 
     except httpx.HTTPStatusError as e:
         logger.error(f"Error HTTP coches: {e.response.status_code} - {e.response.text}")
-        return _generar_fallback(iata, pickup_date, dropoff_date)
+        return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)
+    except ExternalAPIError as e:
+        logger.error(f"Error de API coches: {e}")
+        return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)
     except httpx.RequestError as e:
         logger.error(f"Error de conexión coches: {e}")
-        return _generar_fallback(iata, pickup_date, dropoff_date)
+        return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)
     except Exception as e:
         logger.error(f"Error inesperado en buscar_coches: {e}")
-        return _generar_fallback(iata, pickup_date, dropoff_date)
+        return _fallback_con_cache(cache_key, iata, pickup_date, dropoff_date)

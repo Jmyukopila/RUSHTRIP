@@ -8,6 +8,7 @@ python-multipart==0.0.20
 loguru==0.7.3
 aiofiles==24.1.0
 mangum==0.17.0
+psycopg[binary]==3.2.3
 
 # Tests (dev)
 pytest==8.3.4

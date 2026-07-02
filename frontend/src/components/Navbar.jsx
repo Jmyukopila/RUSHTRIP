@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { IconUser, IconLogout } from './icons';
 
 const NAV_LINKS = [
   { label: 'Inicio', path: '/' },
@@ -11,6 +13,14 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
+
+  async function handleLogout() {
+    setOpen(false);
+    await logout();
+    navigate('/');
+  }
 
   useEffect(() => {
     const handleScroll = () => {
@@ -84,6 +94,29 @@ export default function Navbar() {
                   </Link>
                 );
               })}
+
+              <span className="w-px h-5 bg-border-200 mx-2" />
+
+              {isAuthenticated ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-sm text-muted max-w-[12rem] truncate">
+                    <IconUser className="w-4 h-4 text-accent shrink-0" />
+                    <span className="truncate">{user?.nombre || user?.email}</span>
+                  </span>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted hover:text-accent rounded-lg transition-all duration-200"
+                    aria-label="Cerrar sesión"
+                  >
+                    <IconLogout className="w-4 h-4" />
+                    Salir
+                  </button>
+                </div>
+              ) : (
+                <Link to="/login" className="btn-primary px-4 py-2 text-sm">
+                  Iniciar sesión
+                </Link>
+              )}
             </div>
 
             <button
@@ -142,6 +175,32 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+
+              <div className="h-px bg-border-100 my-2" />
+
+              {isAuthenticated ? (
+                <>
+                  <div className="flex items-center gap-2 py-2 px-4 text-sm text-muted">
+                    <IconUser className="w-4 h-4 text-accent shrink-0" />
+                    <span className="truncate">{user?.nombre || user?.email}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 text-base font-medium py-3 px-4 rounded-lg text-muted hover:text-accent hover:bg-card transition-all"
+                  >
+                    <IconLogout className="w-4 h-4" />
+                    Cerrar sesión
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setOpen(false)}
+                  className="btn-primary w-full mt-1"
+                >
+                  Iniciar sesión
+                </Link>
+              )}
             </div>
             <div className="absolute bottom-0 left-0 right-0 p-5 border-t border-border-100">
               <p className="text-xs text-muted-300">© {new Date().getFullYear()} RushTrip</p>
