@@ -639,14 +639,24 @@ async def generar_plan(
         incluir_vehiculo=incluir_vehiculo, tier=tier,
     )
 
-    # 8. Clima y actividades del destino, en paralelo (no bloquean el plan si fallan)
+    # 8. Clima y actividades del destino (secuencial: actividades se personaliza
+    # con el pronóstico. Open-Meteo es rápido y cacheado, la latencia extra es
+    # marginal frente a la ganancia de relevancia. No bloquean el plan si fallan.)
     clima, actividades = None, None
     try:
         from services.weather import obtener_clima
         from services.activities import obtener_actividades
-        clima, actividades = await asyncio.gather(
-            obtener_clima(ciudad_destino, fecha_salida, fecha_regreso, iata=destino),
-            obtener_actividades(ciudad_destino, iata=destino),
+        clima = await obtener_clima(ciudad_destino, fecha_salida, fecha_regreso, iata=destino)
+        actividades = await obtener_actividades(
+            ciudad_destino,
+            iata=destino,
+            limite=8,
+            tier=tier,
+            fecha_salida=fecha_salida,
+            fecha_regreso=fecha_regreso,
+            clima=clima,
+            pasajeros=pasajeros,
+            incluir_vehiculo=incluir_vehiculo,
         )
     except Exception as e:
         logger.warning(f"No se pudo obtener clima/actividades para {ciudad_destino}: {e}")

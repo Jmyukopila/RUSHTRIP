@@ -2,10 +2,20 @@
 # Configuración común de tests: aísla las DBs SQLite a un dir temporal por test
 # y expone utilidades para mockear respuestas HTTP sin tocar la red.
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+# Aísla los tests de variables de entorno del desarrollador/producción.
+# Los tests deben correr 100% offline y con SQLite local.
+os.environ["SUPABASE_DB_URL"] = ""
+os.environ["SUPABASE_URL"] = ""
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_USER"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["DEBUG"] = "true"
 
 # Asegura que la raíz del repo esté en sys.path para importar core/, services/, main
 ROOT = Path(__file__).resolve().parent.parent

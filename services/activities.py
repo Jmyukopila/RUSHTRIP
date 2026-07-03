@@ -7,6 +7,8 @@
 
 import logging
 import unicodedata
+from datetime import datetime, timedelta
+from statistics import mean
 
 from core.config import settings
 from core.database_cache import cache_get, cache_get_stale, cache_set
@@ -47,6 +49,25 @@ CATEGORIAS_ACTIVIDAD: list[tuple[tuple[str, ...], tuple[str, str, float]]] = [
     ),
 ]
 _CATEGORIA_DEFAULT = ("Atracción", "📍", 20.0)
+
+# Atributos de cada categoría para personalizar según contexto del plan
+ATRIBUTOS_CATEGORIA: dict[str, dict] = {
+    "Parque de atracciones": {"indoor": False, "familiar": True,  "duracion": "larga",  "precio": "premium"},
+    "Museo":                 {"indoor": True,  "familiar": True,  "duracion": "media",  "precio": "economico"},
+    "Espectáculo":           {"indoor": True,  "familiar": True,  "duracion": "corta",  "precio": "premium"},
+    "Mirador":               {"indoor": False, "familiar": True,  "duracion": "corta",  "precio": "gratis"},
+    "Playa":                 {"indoor": False, "familiar": True,  "duracion": "media",  "precio": "gratis"},
+    "Templo / Iglesia":      {"indoor": True,  "familiar": True,  "duracion": "corta",  "precio": "gratis"},
+    "Parque / Naturaleza":   {"indoor": False, "familiar": True,  "duracion": "media",  "precio": "gratis"},
+    "Sitio histórico":       {"indoor": False, "familiar": True,  "duracion": "media",  "precio": "economico"},
+    "Atracción":             {"indoor": False, "familiar": True,  "duracion": "media",  "precio": "economico"},
+    # Categorías propias del dataset curado
+    "Tour guiado":           {"indoor": False, "familiar": True,  "duracion": "media",  "precio": "economico"},
+    "Tour gastronómico":     {"indoor": False, "familiar": False, "duracion": "media",  "precio": "premium"},
+    "Excursión":             {"indoor": False, "familiar": True,  "duracion": "larga",  "precio": "premium"},
+    "Paseo en barca":        {"indoor": False, "familiar": True,  "duracion": "corta",  "precio": "economico"},
+    "Paseo en barco":        {"indoor": False, "familiar": True,  "duracion": "corta",  "precio": "economico"},
+}
 
 # Plantillas de descripción por categoría (la API solo describe en inglés
 # y exigiría una llamada extra por POI; generamos el texto en español)
@@ -239,7 +260,162 @@ def _armar_actividad(
     }
 
 
-def _actividades_curadas(ciudad: str, iata: str | None, limite: int) -> dict:
+def _calcular_noches(fecha_salida: str, fecha_regreso: str) -> int:
+    """Calcula noches entre dos fechas en formato YYYY-MM-DD."""
+    try:
+        salida = datetime.strptime(fecha_salida, "%Y-%m-%d")
+        regreso = datetime.strptime(fecha_regreso, "%Y-%m-%d")
+        noches = (regreso - salida).days
+        return max(noches, 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _bucket_lluvia(clima: dict | None) -> str:
+    """
+    Devuelve un bucket discretizado según la probabilidad de lluvia promedio
+    del pronóstico/típico recibido.
+    """
+    if not clima or not isinstance(clima, dict):
+        return "sin"
+    dias = clima.get("dias") or clima.get("dias", [])
+    if not dias:
+        return "sin"
+    try:
+        probs = [d.get("prob_lluvia", 0) for d in dias if d.get("prob_lluvia") is not None]
+        if not probs:
+            return "sin"
+        promedio = mean(probs)
+    except Exception:
+        return "sin"
+    if promedio >= 60:
+        return "alta"
+    if promedio >= 25:
+        return "media"
+    return "baja"
+
+
+def _bucket_pasajeros(pasajeros: int) -> str:
+    """Solo / pareja / grupo, según número de pasajeros."""
+    if pasajeros >= 4:
+        return "grupo"
+    if pasajeros >= 2:
+        return "pareja"
+    return "solo"
+
+
+def _score_actividad(
+    act: dict,
+    tier: str,
+    lluvia_bucket: str,
+    pax_bucket: str,
+    noches: int,
+) -> float:
+    """
+    Score de relevancia contextual. Valores altos suben en la lista.
+    El ordenamiento es estable: en empate se mantiene el orden original.
+    """
+    attrs = ATRIBUTOS_CATEGORIA.get(act.get("categoria", ""), {})
+    indoor = attrs.get("indoor", False)
+    familiar = attrs.get("familiar", True)
+    duracion = attrs.get("duracion", "media")
+    precio_tipo = attrs.get("precio", "economico")
+    gratis = act.get("gratis", False)
+
+    score = 0.0
+
+    # --- Tier ---
+    tier = (tier or "estandar").lower()
+    if tier == "economico":
+        if gratis:
+            score += 2.5
+        elif precio_tipo == "economico":
+            score += 1.0
+        elif precio_tipo == "premium":
+            score -= 1.5
+    elif tier == "premium":
+        if precio_tipo == "premium":
+            score += 2.0
+        elif precio_tipo == "economico":
+            score += 0.5
+        elif gratis:
+            score -= 1.0
+    else:  # estandar
+        if gratis:
+            score += 1.0
+        elif precio_tipo == "economico":
+            score += 0.5
+        elif precio_tipo == "premium":
+            score -= 0.5
+
+    # --- Clima ---
+    if lluvia_bucket == "alta":
+        score += 2.5 if indoor else -2.0
+    elif lluvia_bucket == "media":
+        score += 0.8 if indoor else -0.5
+    elif lluvia_bucket == "baja":
+        score += 1.0 if not indoor else -0.3
+
+    # --- Pasajeros ---
+    if pax_bucket == "grupo":
+        score += 1.5 if familiar else -0.8
+    elif pax_bucket == "pareja":
+        score += 0.6 if not familiar else 0.2
+
+    # --- Duración del viaje ---
+    if noches <= 2:
+        if duracion == "larga":
+            score -= 3.0
+        elif duracion == "corta":
+            score += 0.5
+    elif noches >= 5:
+        if duracion == "larga":
+            score += 1.5
+        elif duracion == "media":
+            score += 0.5
+
+    return score
+
+
+def _boost_por_contexto(
+    actividades: list[dict],
+    tier: str,
+    clima: dict | None,
+    pasajeros: int,
+    fecha_salida: str,
+    fecha_regreso: str,
+) -> list[dict]:
+    """
+    Reordena (y descarta excursiones en viajes muy cortos) según el contexto
+    del plan. No muta los dicts originales.
+    """
+    if not actividades:
+        return []
+
+    lluvia_bucket = _bucket_lluvia(clima)
+    pax_bucket = _bucket_pasajeros(pasajeros)
+    noches = _calcular_noches(fecha_salida, fecha_regreso)
+
+    def _key(act: dict) -> tuple:
+        score = _score_actividad(act, tier, lluvia_bucket, pax_bucket, noches)
+        precio = act.get("precio_estimado", 0) or 0
+        # En empate: gratis primero, luego precio ascendente, luego nombre
+        return (-score, 0 if act.get("gratis") else 1, precio, act.get("nombre", ""))
+
+    return sorted(actividades, key=_key)
+
+
+def _actividades_curadas(
+    ciudad: str,
+    iata: str | None,
+    limite: int,
+    *,
+    tier: str = "estandar",
+    fecha_salida: str = "",
+    fecha_regreso: str = "",
+    clima: dict | None = None,
+    pasajeros: int = 1,
+) -> dict:
     """Selección curada local: por IATA, por nombre de ciudad o '_default'."""
     key = (iata or "").upper()
     entradas = ACTIVIDADES_CURADAS.get(key)
@@ -249,8 +425,12 @@ def _actividades_curadas(ciudad: str, iata: str | None, limite: int) -> dict:
 
     actividades = [
         _armar_actividad(nombre, categoria, icono, precio, descripcion, ciudad, fuente="curado")
-        for nombre, categoria, icono, precio, descripcion in entradas[:limite]
+        for nombre, categoria, icono, precio, descripcion in entradas
     ]
+    actividades = _boost_por_contexto(
+        actividades, tier=tier, clima=clima,
+        pasajeros=pasajeros, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
+    )[:limite]
     return {
         "ciudad":      ciudad,
         "actividades": actividades,
@@ -259,10 +439,22 @@ def _actividades_curadas(ciudad: str, iata: str | None, limite: int) -> dict:
     }
 
 
-async def _consultar_opentripmap(lat: float, lon: float, ciudad: str, limite: int) -> list[dict]:
+async def _consultar_opentripmap(
+    lat: float,
+    lon: float,
+    ciudad: str,
+    limite: int,
+    *,
+    tier: str = "estandar",
+    fecha_salida: str = "",
+    fecha_regreso: str = "",
+    clima: dict | None = None,
+    pasajeros: int = 1,
+) -> list[dict]:
     """
     Mejores POIs turísticos alrededor del centro de la ciudad, ordenados por
     relevancia ('rate' de OpenTripMap). Lanza ExternalAPIError si la API falla.
+    El boost por contexto se aplica sobre la lista final.
     """
     resp = await request_with_retry(
         "GET", _RADIUS_URL,
@@ -302,6 +494,11 @@ async def _consultar_opentripmap(lat: float, lon: float, ciudad: str, limite: in
         ))
         if len(actividades) >= limite:
             break
+
+    actividades = _boost_por_contexto(
+        actividades, tier=tier, clima=clima,
+        pasajeros=pasajeros, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
+    )
     return actividades
 
 
@@ -309,6 +506,13 @@ async def obtener_actividades(
     ciudad: str,
     iata: str | None = None,
     limite: int = _LIMITE_DEFAULT,
+    *,
+    tier: str = "estandar",
+    fecha_salida: str = "",
+    fecha_regreso: str = "",
+    clima: dict | None = None,
+    pasajeros: int = 1,
+    incluir_vehiculo: bool = False,
 ) -> dict:
     """
     Mejores actividades del destino.
@@ -316,9 +520,18 @@ async def obtener_actividades(
     Cascada: cache → OpenTripMap (si hay key) → cache stale → selección curada.
     Siempre devuelve un dict con 'ciudad', 'actividades', 'precision' y 'aviso' —
     nunca lanza excepción ni devuelve la lista vacía.
+
+    El resultado se personaliza según tier, clima, pasajeros y duración del viaje.
     """
     ciudad_limpia = ciudad.strip()
-    cache_key = f"actividades:{ciudad_limpia.lower()}:{limite}"
+    lluvia_bucket = _bucket_lluvia(clima)
+    pax_bucket = _bucket_pasajeros(pasajeros)
+    # Cache key separada por contexto discretizado para no mezclar recomendaciones
+    # de distintos perfiles de viaje.
+    cache_key = (
+        f"actividades:{ciudad_limpia.lower()}:{limite}:"
+        f"{tier.lower()}:{lluvia_bucket}:{pax_bucket}"
+    )
 
     cached = cache_get(cache_key)
     if cached:
@@ -330,7 +543,11 @@ async def obtener_actividades(
             if coords:
                 lat, lon = coords
                 try:
-                    actividades = await _consultar_opentripmap(lat, lon, ciudad_limpia, limite)
+                    actividades = await _consultar_opentripmap(
+                        lat, lon, ciudad_limpia, limite,
+                        tier=tier, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
+                        clima=clima, pasajeros=pasajeros,
+                    )
                     if actividades:
                         resultado = {
                             "ciudad":      ciudad_limpia,
@@ -350,4 +567,8 @@ async def obtener_actividades(
     except Exception as e:
         logger.warning(f"Error obteniendo actividades para '{ciudad_limpia}': {e}")
 
-    return _actividades_curadas(ciudad_limpia, iata, limite)
+    return _actividades_curadas(
+        ciudad_limpia, iata, limite,
+        tier=tier, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
+        clima=clima, pasajeros=pasajeros,
+    )
