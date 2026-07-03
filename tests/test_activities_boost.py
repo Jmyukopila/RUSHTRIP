@@ -162,6 +162,36 @@ async def test_obtener_actividades_backward_compat():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Tests Fase 3 — dataset curado expandido y fusión curado + OpenTripMap
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_tiene_curado():
+    from services.activities import _tiene_curado
+
+    assert _tiene_curado("BOG", "Bogotá") is True
+    assert _tiene_curado(None, "Tokio") is True
+    assert _tiene_curado("XXX", "Ciudad Inexistente") is False
+
+
+def test_fusionar_actividades_prioriza_curado_y_evita_duplicados():
+    from services.activities import _fusionar_actividades
+
+    curado = [
+        {"nombre": "Museo del Prado", "categoria": "Museo"},
+        {"nombre": "Parque del Retiro", "categoria": "Parque / Naturaleza"},
+    ]
+    reales = [
+        {"nombre": "Museo del Prado", "categoria": "Museo"},
+        {"nombre": "Real Madrid Tour", "categoria": "Atracción"},
+    ]
+    resultado = _fusionar_actividades(curado, reales, 3)
+    assert len(resultado) == 3
+    nombres = [a["nombre"] for a in resultado]
+    assert nombres == ["Museo del Prado", "Parque del Retiro", "Real Madrid Tour"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Tests Fase 2 — enriquecimiento OpenTripMap (/places/xid, fotos, traducción)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -325,5 +355,9 @@ async def test_obtener_actividades_con_opentripmap(monkeypatch):
 
     resultado = await obtener_actividades("Madrid", iata="MAD", limite=8)
     assert resultado["precision"] == "real"
-    assert len(resultado["actividades"]) == 1
-    assert resultado["actividades"][0]["categoria"] == "Parque / Naturaleza"
+    # Madrid tiene 5 curadas + 1 real = 6 actividades (sin duplicados)
+    assert len(resultado["actividades"]) == 6
+    nombres = [a["nombre"] for a in resultado["actividades"]]
+    assert "Parque Test" in nombres
+    assert any(a["fuente"] == "curado" for a in resultado["actividades"])
+    assert any(a["fuente"] == "opentripmap" for a in resultado["actividades"])

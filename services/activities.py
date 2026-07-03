@@ -94,6 +94,7 @@ _DESCRIPCIONES: dict[str, str] = {
 # Selección curada local: (nombre, categoría, emoji, precio estimado USD, descripción)
 # Clave IATA en mayúsculas; '_default' para destinos no listados
 ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
+    # ─── Colombia / Latinoamérica Norte ───────────────────────────────────
     "BOG": [
         ("Museo del Oro", "Museo", "🏛️", 5, "La colección de orfebrería prehispánica más grande del mundo."),
         ("Cerro de Monserrate", "Mirador", "🌄", 8, "Vistas panorámicas de toda la ciudad subiendo en teleférico o funicular."),
@@ -115,6 +116,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Tour al atardecer por Getsemaní", "Tour guiado", "🚶", 15, "El barrio más vibrante de la ciudad, entre arte callejero y plazas."),
         ("Playa de Bocagrande", "Playa", "🏖️", 0, "La playa urbana más popular de Cartagena."),
     ],
+    # ─── México y Caribe ──────────────────────────────────────────────────
     "MEX": [
         ("Museo Nacional de Antropología", "Museo", "🏛️", 5, "El museo más importante de México y su famosa Piedra del Sol."),
         ("Teotihuacán", "Excursión", "🚌", 40, "Las pirámides del Sol y de la Luna a una hora de la ciudad."),
@@ -129,6 +131,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Parque Xcaret", "Parque de atracciones", "🎢", 110, "Parque ecológico con ríos subterráneos, fauna y espectáculos."),
         ("Cenotes de la Riviera Maya", "Parque / Naturaleza", "🌳", 30, "Nado en pozas naturales de agua dulce únicas de la península."),
     ],
+    # ─── Norteamérica ─────────────────────────────────────────────────────
     "MIA": [
         ("South Beach y Ocean Drive", "Playa", "🏖️", 0, "La playa y el paseo art déco más icónicos de la ciudad."),
         ("Wynwood Walls", "Museo", "🎨", 12, "El museo de arte urbano al aire libre más famoso del mundo."),
@@ -150,6 +153,84 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Espectáculo en Broadway", "Espectáculo", "🎭", 80, "Un musical en los teatros más famosos del mundo."),
         ("Puente de Brooklyn", "Mirador", "🌄", 0, "Cruce a pie con las mejores vistas del skyline de Manhattan."),
     ],
+    "LAX": [
+        ("Paseo de la Fama y Dolby Theatre", "Sitio histórico", "🏰", 0, "Las estrellas de Hollywood y el teatro de los Oscar."),
+        ("Santa Mónica Pier", "Parque de atracciones", "🎢", 0, "Muelle icónico con noria, juegos y atardeceres sobre el Pacífico."),
+        ("Getty Center", "Museo", "🏛️", 0, "Arte, arquitectura y jardines con vistas panorámicas de Los Ángeles."),
+        ("Universal Studios Hollywood", "Parque de atracciones", "🎢", 120, "Parque temático y estudios de cine en plena Hollywood."),
+        ("Venice Beach y Muscle Beach", "Playa", "🏖️", 0, "El paseo costero más colorido y alternativo de California."),
+    ],
+    "SFO": [
+        ("Golden Gate Bridge", "Mirador", "🌄", 0, "El puente naranja más fotografiado del mundo, símbolo de San Francisco."),
+        ("Alcatraz", "Excursión", "⛴️", 45, "Tour por la famosa prisión en la isla rocosa de la bahía."),
+        ("Pier 39 y Fisherman's Wharf", "Atracción", "📍", 0, "Leones marinos, restaurantes y tiendas en el muelle más animado."),
+        ("Cable Cars", "Atracción", "📍", 8, "Paseo en los históricos tranvías de cable por las calles empinadas."),
+        ("Muir Woods", "Parque / Naturaleza", "🌳", 15, "Bosque de secuoyas gigantes a pocos minutos de la ciudad."),
+    ],
+    "SEA": [
+        ("Pike Place Market", "Atracción", "📍", 0, "Mercado histórico con puestos de pescado, flores y artesanías."),
+        ("Space Needle", "Mirador", "🌄", 35, "Vista panorámica de la ciudad, el mar y el Monte Rainier."),
+        ("Museo de la Cultura Pop (MoPOP)", "Museo", "🏛️", 30, "Rock, ciencia ficción y cultura popular en un edificio futurista."),
+        ("Chihuly Garden and Glass", "Museo", "🏛️", 36, "Esculturas de vidrio soplado junto a la Space Needle."),
+        ("Bainbridge Island en ferry", "Excursión", "⛴️", 20, "Paseo en ferry con vistas al skyline y la isla vinícola."),
+    ],
+    "LAS": [
+        ("Paseo por el Strip", "Atracción", "📍", 0, "Los hoteles-casino, fuentes y espectáculos de la avenida principal."),
+        ("Show nocturno del Bellagio", "Espectáculo", "🎭", 0, "El famoso espectáculo de fuentes danzantes y luces."),
+        ("Gran Cañón del Colorado", "Excursión", "🚌", 120, "Una de las maravillas naturales del mundo, a día completo desde Las Vegas."),
+        ("High Roller Observation Wheel", "Mirador", "🌄", 30, "La noria más alta de Norteamérica con vistas nocturnas."),
+        ("Fremont Street Experience", "Espectáculo", "🎭", 0, "Toldo de luces LED, música en vivo y ambiente vintage de Las Vegas."),
+    ],
+    "ATL": [
+        ("Georgia Aquarium", "Museo", "🏛️", 45, "Uno de los acuarios más grandes del mundo, con ballenas y tiburones."),
+        ("Centennial Olympic Park", "Parque / Naturaleza", "🌳", 0, "Parque heredado de los Juegos Olímpicos de 1996."),
+        ("World of Coca-Cola", "Museo", "🏛️", 20, "Historia de la marca y sala de degustación de bebidas de todo el mundo."),
+        ("Martin Luther King Jr. National Historic Site", "Sitio histórico", "🏰", 0, "Lugar de nacimiento y museo del líder de derechos civiles."),
+        ("Atlanta BeltLine", "Parque / Naturaleza", "🌳", 0, "Sendero urbano con arte, parques y acceso a barrios locales."),
+    ],
+    "IAH": [
+        ("Space Center Houston", "Museo", "🏛️", 35, "Centro espacial con cohetes reales y simuladores de la NASA."),
+        ("Museo de Bellas Artes de Houston", "Museo", "🏛️", 20, "Colección de arte europeo, americano y africano."),
+        ("Buffalo Bayou Park", "Parque / Naturaleza", "🌳", 0, "Parque lineal con vistas del downtown, ideal para caminar o andar en bici."),
+        ("Tour gastronómico por The Heights", "Tour gastronómico", "🍷", 40, "Ruta de cocina internacional y texana en un barrio trendy."),
+        ("Mercado japones de Kemah Boardwalk", "Atracción", "📍", 0, "Paseo marítimo con tiendas, restaurantes y vistas de la bahía."),
+    ],
+    "DFW": [
+        ("JFK Memorial y Dealey Plaza", "Sitio histórico", "🏰", 0, "Lugar histórico dedicado al presidente John F. Kennedy."),
+        ("Museo de Arte de Dallas", "Museo", "🏛️", 16, "Arte contemporáneo y exposiciones temporales en el Arts District."),
+        ("Reunion Tower", "Mirador", "🌄", 20, "Bola geodésica con vistas 360° del skyline de Dallas."),
+        ("Six Flags Over Texas", "Parque de atracciones", "🎢", 85, "Parque de montañas rusas y entretenimiento familiar."),
+        ("Tour de barbacoa texana", "Tour gastronómico", "🍷", 50, "Ruta por las mejores smokehouses de brisket y ribs de la ciudad."),
+    ],
+    "BOS": [
+        ("Freedom Trail", "Tour guiado", "🚶", 0, "Recorrido de 4 km por los sitios históricos de la Revolución Americana."),
+        ("Harvard y MIT", "Sitio histórico", "🏰", 0, "Paseo por los campus históricos de Cambridge."),
+        ("Boston Public Garden", "Parque / Naturaleza", "🌳", 0, "Jardín victoriano con los cisnes y barquitos del estanque."),
+        ("Museo de Bellas Artes de Boston", "Museo", "🏛️", 27, "Una de las colecciones de arte más importantes de Estados Unidos."),
+        ("Paseo en barco por el puerto", "Paseo en barco", "🛥️", 25, "Vistas del puerto, el acuario y el skyline desde el agua."),
+    ],
+    "IAD": [
+        ("National Mall y monumentos", "Sitio histórico", "🏰", 0, "Lincoln Memorial, Washington Monument y Capitolio en un paseo monumental."),
+        ("Smithsonian Museums", "Museo", "🏛️", 0, "Museos gratuitos de historia, arte, aire y espacio."),
+        ("Casa Blanca", "Sitio histórico", "🏰", 0, "Fachada y jardines de la residencia presidencial de Estados Unidos."),
+        ("Georgetown", "Tour guiado", "🚶", 0, "Barrio histórico de calles empedradas, tiendas y restaurantes junto al río."),
+        ("Mount Vernon", "Excursión", "🚌", 28, "Hogar y plantación de George Washington, a orillas del río Potomac."),
+    ],
+    "YYZ": [
+        ("CN Tower", "Mirador", "🌄", 30, "Subida a la torre más alta de América del Norte con vistas al lago Ontario."),
+        ("Distillery District", "Tour guiado", "🚶", 0, "Barrio peatonal de ladrillo rojo con galerías, cafés y cervecerías."),
+        ("Royal Ontario Museum", "Museo", "🏛️", 23, "Arte, cultura mundial y dinosaurios en el centro de Toronto."),
+        ("Niagara Falls", "Excursión", "🚌", 90, "Las cataratas más famosas del mundo, a día completo desde Toronto."),
+        ("Toronto Islands", "Parque / Naturaleza", "🌳", 10, "Islas frente al skyline, ideales para bicicleta y playas."),
+    ],
+    "YVR": [
+        ("Stanley Park", "Parque / Naturaleza", "🌳", 0, "Parque costero gigante con el Seawall y tótems indígenas."),
+        ("Capilano Suspension Bridge", "Parque / Naturaleza", "🌳", 55, "Puente colgante entre bosques de cedros y secuoyas."),
+        ("Granville Island", "Atracción", "📍", 0, "Mercado público, artesanías y restaurantes con vista a la bahía."),
+        ("Grouse Mountain", "Mirador", "🌄", 50, "Vistas de la ciudad y actividades de montaña todo el año."),
+        ("Gastown y Steam Clock", "Sitio histórico", "🏰", 0, "Barrio histórico con el famoso reloj de vapor y calles de adoquines."),
+    ],
+    # ─── Sudamérica ───────────────────────────────────────────────────────
     "LIM": [
         ("Centro Histórico y Plaza de Armas", "Sitio histórico", "🏰", 0, "El corazón colonial de Lima, Patrimonio de la Humanidad."),
         ("Museo Larco", "Museo", "🏛️", 10, "Arte precolombino en una casona virreinal rodeada de jardines."),
@@ -157,6 +238,49 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Circuito Mágico del Agua", "Parque / Naturaleza", "🌳", 4, "Fuentes monumentales con espectáculo de luces por la noche."),
         ("Tour gastronómico por Barranco", "Tour gastronómico", "🍷", 35, "La mejor cocina del mundo en el barrio bohemio de la ciudad."),
     ],
+    "SCL": [
+        ("Cerro San Cristóbal", "Mirador", "🌄", 0, "Vistas panorámicas de Santiago desde el cerro con teleférico."),
+        ("Barrio Bellavista", "Tour gastronómico", "🍷", 30, "Colorido barrio de bares, murales y vida nocturna."),
+        ("Museo de la Memoria", "Museo", "🏛️", 0, "Memorial y museo sobre los derechos humanos en Chile."),
+        ("Cajón del Maipo", "Excursión", "🚌", 50, "Excursión de día a montañas, ríos y termas en los Andes."),
+        ("Plaza de Armas y Catedral", "Sitio histórico", "🏰", 0, "Centro histórico colonial de Santiago."),
+    ],
+    "EZE": [
+        ("Caminito", "Sitio histórico", "🏰", 0, "Calle museo de colores, tango y arte en el barrio de La Boca."),
+        ("Recoleta y Cementerio", "Sitio histórico", "🏰", 0, "Barrio elegante con mausoleos históricos y feria de artesanías."),
+        ("Teatro Colón", "Espectáculo", "🎭", 25, "Uno de los teatros de ópera más importantes del mundo."),
+        ("San Telmo", "Tour gastronómico", "🍷", 35, "Antiguo barrio de ferias, tango y parrillas porteñas."),
+        ("Tigre y Delta del Paraná", "Excursión", "🚌", 30, "Paseo en lancha por los canales del delta desde Buenos Aires."),
+    ],
+    "GIG": [
+        ("Cristo Redentor", "Mirador", "🌄", 20, "La estatua icónica del Corcovado con vistas de Río."),
+        ("Pan de Azúcar", "Mirador", "🌄", 30, "Subida en teleférico a la montaña más famosa de la ciudad."),
+        ("Copacabana e Ipanema", "Playa", "🏖️", 0, "Las playas más icónicas de Brasil para ver y ser visto."),
+        ("Jardín Botánico", "Parque / Naturaleza", "🌳", 5, "Bosque de palmeras imperiales y fauna tropical en el corazón de Río."),
+        ("Escalera de Selarón", "Sitio histórico", "🏰", 0, "Escaleras de azulejos de colores entre Lapa y Santa Teresa."),
+    ],
+    "GRU": [
+        ("Avenida Paulista", "Atracción", "📍", 0, "Corazón financiero y cultural con museos, cafés y eventos callejeros."),
+        ("Mercado Municipal", "Tour gastronómico", "🍷", 25, "Mercado histórico con frutas tropicales y el famoso mortadela sandwich."),
+        ("Parque Ibirapuera", "Parque / Naturaleza", "🌳", 0, "El pulmón verde de São Paulo con museos y arquitectura de Niemeyer."),
+        ("Beco do Batman", "Museo", "🎨", 0, "Calle de grafitis coloridos en el bohemio barrio de Vila Madalena."),
+        ("Museo de Arte de São Paulo (MASP)", "Museo", "🏛️", 10, "Colección de arte europeo en un edificio icónico sobre pilotis."),
+    ],
+    "UIO": [
+        ("Centro Histórico de Quito", "Sitio histórico", "🏰", 0, "La ciudad colonial más alta del mundo, Patrimonio de la Humanidad."),
+        ("Basílica del Voto Nacional", "Templo / Iglesia", "⛪", 4, "Impresionante iglesia neogótica con vistas desde sus torres."),
+        ("TelefériQo", "Mirador", "🌄", 10, "Subida en teleférico a 4.000 m con vistas de los volcanes."),
+        ("Mitad del Mundo", "Atracción", "📍", 5, "Monumento y museo en la línea ecuatorial."),
+        ("Mercado de San Francisco", "Tour gastronómico", "🍷", 20, "Sabores quiteños: hornado, empanadas y jugos tropicales."),
+    ],
+    "PTY": [
+        ("Canal de Panamá (Miraflores)", "Museo", "🏛️", 18, "Centro de visitantes con mirador a las esclusas y el paso de barcos."),
+        ("Casco Viejo", "Sitio histórico", "🏰", 0, "Centro histórico colonial con cafés, techos y vistas al skyline moderno."),
+        ("Cinta Costera", "Parque / Naturaleza", "🌳", 0, "Paseo marítimo de varios kilómetros con vista al océano Pacífico."),
+        ("Isla Taboga", "Excursión", "⛴️", 40, "Excursión en ferry a la isla de las flores, playas y senderos."),
+        ("Mercado de Mariscos", "Tour gastronómico", "🍷", 25, "Ceviche fresco y cocina de mar con ambiente local."),
+    ],
+    # ─── Europa ───────────────────────────────────────────────────────────
     "MAD": [
         ("Museo del Prado", "Museo", "🏛️", 17, "Una de las pinacotecas más importantes del mundo: Velázquez, Goya, El Bosco."),
         ("Parque del Retiro", "Parque / Naturaleza", "🌳", 0, "El gran parque del centro con su estanque y el Palacio de Cristal."),
@@ -192,6 +316,162 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Mercado de Camden", "Atracción", "📍", 0, "Mercados alternativos, música y comida del mundo junto al canal."),
         ("Teatro en el West End", "Espectáculo", "🎭", 60, "Un musical en el distrito teatral más famoso de Europa."),
     ],
+    "AMS": [
+        ("Museo Van Gogh", "Museo", "🏛️", 22, "La mayor colección de pinturas y dibujos de Vincent van Gogh."),
+        ("Casa de Ana Frank", "Museo", "🏛️", 16, "Museo histórico en la casa donde se escondió la familia Frank."),
+        ("Paseo en bote por los canales", "Paseo en barca", "🛶", 18, "Recorrido por los canales patrimoniales del siglo XVII."),
+        ("Barrio Jordaan", "Tour guiado", "🚶", 0, "Callejuelas pintorescas, galerías y cafés bohemios."),
+        ("Vondelpark", "Parque / Naturaleza", "🌳", 0, "El parque más famoso de Ámsterdam para pasear en bici o picnic."),
+    ],
+    "BER": [
+        ("Muro de Berlín y East Side Gallery", "Sitio histórico", "🏰", 0, "Restos del muro convertidos en galería de arte al aire libre."),
+        ("Puerta de Brandeburgo", "Sitio histórico", "🏰", 0, "Símbolo de la reunificación alemana en el corazón de Berlín."),
+        ("Museo del Holocausto", "Museo", "🏛️", 0, "Memorial conmemorativo de hormigón al Holocausto judío."),
+        ("Museo Pergamo", "Museo", "🏛️", 12, "Artefactos arqueológicos monumentales de la antigüedad."),
+        ("Tour gastronómico por Kreuzberg", "Tour gastronómico", "🍷", 35, "Street food internacional y cerveza artesanal en un barrio alternativo."),
+    ],
+    "MUC": [
+        ("Marienplatz y el Ayuntamiento", "Sitio histórico", "🏰", 0, "Plaza central con el carillón y la arquitectura gótica."),
+        ("Viktualienmarkt", "Tour gastronómico", "🍷", 20, "Mercado gastronómico con productos bávaros y cervezas."),
+        ("Palacio de Nymphenburg", "Sitio histórico", "🏰", 15, "Palacio barroco con jardines, lagos y pabellones."),
+        ("Museo BMW", "Museo", "🏛️", 10, "Historia de la marca y exposición de autos y motos icónicas."),
+        ("Englischer Garten", "Parque / Naturaleza", "🌳", 0, "Uno de los parques urbanos más grandes del mundo, ideal para surfear en el río."),
+    ],
+    "LIS": [
+        ("Torre de Belém", "Sitio histórico", "🏰", 10, "Monumento manuelino junto al Tajo, símbolo de los Descubrimientos."),
+        ("Alfama", "Tour guiado", "🚶", 0, "Barrio más antiguo de Lisboa, de callejuelas, fado y miradores."),
+        ("Tranvía 28", "Atracción", "📍", 4, "Paseo en tranvía histórico por los barrios más pintorescos."),
+        ("Pastéis de Belém", "Tour gastronómico", "🍷", 5, "Visita a la fábrica original de los pastelitos de nata."),
+        ("Sintra", "Excursión", "🚌", 35, "Palacios de cuento a 30 minutos de Lisboa."),
+    ],
+    "ATH": [
+        ("Acrópolis y Partenón", "Sitio histórico", "🏰", 20, "La colina sagrada de Atenas y el templo más famoso de la antigua Grecia."),
+        ("Museo de la Acrópolis", "Museo", "🏛️", 10, "Esculturas y tesoros encontrados en la Acrópolis."),
+        ("Barrio de Plaka", "Tour guiado", "🚶", 0, "Calles adoquinadas bajo la Acrópolis con tavernas y tiendas."),
+        ("Monastiraki", "Atracción", "📍", 0, "Plaza de mercado de pulgas con vistas a la Acrópolis."),
+        ("Paseo en barco por el Golfo Sarónico", "Paseo en barco", "🛥️", 40, "Excursión marítima a islas cercanas como Egina o Hydra."),
+    ],
+    "VIE": [
+        ("Palacio de Schönbrunn", "Sitio histórico", "🏰", 20, "Residencia imperial con jardines, zoo y conciertos."),
+        ("Centro Histórico y Catedral de San Esteban", "Sitio histórico", "🏰", 0, "Callejuelas imperiales y la catedral gótica más importante."),
+        ("Museo de Historia del Arte", "Museo", "🏛️", 18, "Obras maestras de Brueghel, Velázquez y Vermeer."),
+        ("Prater y noria gigante", "Parque de atracciones", "🎢", 12, "Parque de diversiones histórico con la icónica Riesenrad."),
+        ("Café Central y cafés vienenses", "Tour gastronómico", "🍷", 25, "Tarta Sacher, apfelstrudel y café en templos de la cultura cafetera."),
+    ],
+    "PRG": [
+        ("Puente Carlos", "Sitio histórico", "🏰", 0, "El puente medieval más antiguo de Europa sobre el río Moldava."),
+        ("Castillo de Praga", "Sitio histórico", "🏰", 15, "Complejo medieval con catedral, palacios y vistas de la ciudad."),
+        ("Plaza de la Ciudad Vieja", "Sitio histórico", "🏰", 0, "Reloj astronómico y casas barrocas de colores."),
+        ("Barrio Judío de Josefov", "Tour guiado", "🚶", 0, "Sinagogas históricas y cementerio judío milenario."),
+        ("Cata de cerveza checa", "Tour gastronómico", "🍷", 30, "Degustación de pilsner y cervezas artesanales en pubs históricos."),
+    ],
+    "DUB": [
+        ("Temple Bar", "Tour gastronómico", "🍷", 0, "Barrio vibrante de pubs, música en vivo y cerveza Guinness."),
+        ("Trinity College y Libro de Kells", "Museo", "🏛️", 18, "Manuscrito iluminado medieval en la universidad más antigua de Irlanda."),
+        ("Guinness Storehouse", "Museo", "🏛️", 30, "Experiencia interactiva de la cerveza negra con vista desde el Gravity Bar."),
+        ("Phoenix Park", "Parque / Naturaleza", "🌳", 0, "Uno de los parques urbanos cerrados más grandes de Europa, con ciervos."),
+        ("Castillo de Dublín", "Sitio histórico", "🏰", 8, "Fortaleza histórica en el centro de la ciudad."),
+    ],
+    "IST": [
+        ("Santa Sofía", "Templo / Iglesia", "⛪", 0, "Antigua basílica, mezquita y hoy museo/mezquita, joya de Bizancio."),
+        ("Mezquita Azul", "Templo / Iglesia", "⛪", 0, "Impresionante mezquita otomana con azulejos de İznik."),
+        ("Palacio de Topkapi", "Sitio histórico", "🏰", 15, "Residencia de los sultanes con tesoros y vistas al Cuerno de Oro."),
+        ("Gran Bazar", "Atracción", "📍", 0, "Uno de los mercados cubiertos más antiguos y grandes del mundo."),
+        ("Crucero por el Bósforo", "Paseo en barco", "🛥️", 15, "Paseo entre Europa y Asia con vistas de palacios y mezquitas."),
+    ],
+    # ─── Asia y Medio Oriente ─────────────────────────────────────────────
+    "BKK": [
+        ("Gran Palacio y Wat Phra Kaew", "Templo / Iglesia", "⛪", 15, "Complejo real y templo del Buda Esmeralda."),
+        ("Wat Arun", "Templo / Iglesia", "⛪", 3, "Templo del Amanecer junto al río Chao Phraya."),
+        ("Mercado Chatuchak", "Atracción", "📍", 0, "Mercado de fin de semana con miles de puestos de todo tipo."),
+        ("Mercado flotante de Damnoen Saduak", "Excursión", "🚌", 35, "Paseo en barca entre canales llenos de frutas y artesanías."),
+        ("Street food en Yaowarat", "Tour gastronómico", "🍷", 15, "El barrio chino de Bangkok: pad thai, mango sticky rice y mariscos."),
+    ],
+    "NRT": [
+        ("Templo Senso-ji", "Templo / Iglesia", "⛪", 0, "Templo budista más antiguo de Tokio, en el barrio de Asakusa."),
+        ("Cruce de Shibuya", "Atracción", "📍", 0, "El cruce peatonal más famoso del mundo."),
+        ("Torre de Tokio y Zojoji", "Mirador", "🌄", 25, "Vistas de la ciudad desde la torre naranja icónica."),
+        ("Mercado Tsukiji Outer", "Tour gastronómico", "🍷", 30, "Sushi fresco, tamago y snacks japoneses en puestos callejeros."),
+        ("Shinjuku Gyoen", "Parque / Naturaleza", "🌳", 3, "Jardín imperial con cerezos y vistas del skyline de Shinjuku."),
+    ],
+    "SIN": [
+        ("Marina Bay Sands y Gardens by the Bay", "Parque / Naturaleza", "🌳", 0, "Supertrees, invernaderos futuristas y espectáculo de luces."),
+        ("Sentosa y Universal Studios", "Parque de atracciones", "🎢", 80, "Isla de entretenimiento con playas y parque temático."),
+        ("Chinatown y Templo de la Reliquia del Diente", "Templo / Iglesia", "⛪", 0, "Barrio histórico chino con templos y mercados."),
+        ("Singapore Zoo", "Parque / Naturaleza", "🌳", 40, "Zoológico de fama mundial con recintos abiertos y safaris nocturnos."),
+        ("Hawker centers", "Tour gastronómico", "🍷", 10, "Centros de comida callejera: laksa, chili crab y chicken rice."),
+    ],
+    "HKG": [
+        ("Victoria Peak", "Mirador", "🌄", 0, "La vista más icónica del skyline de Hong Kong y el puerto."),
+        ("Tian Tan Buddha (Ngong Ping 360)", "Excursión", "🚌", 35, "Buda gigante y templo en la isla de Lantau, accesible en teleférico."),
+        ("Mercado de Temple Street", "Atracción", "📍", 0, "Mercado nocturno de ropa, souvenirs y comida local."),
+        ("Dim sum en Central", "Tour gastronómico", "🍷", 25, "Tradición de té y dumplings en restaurantes históricos."),
+        ("Avenue of Stars y Symphony of Lights", "Espectáculo", "🎭", 0, "Paseo con estrellas del cine y espectáculo de luces nocturno."),
+    ],
+    "DXB": [
+        ("Burj Khalifa", "Mirador", "🌄", 45, "El edificio más alto del mundo y vistas desde el piso 124 o 148."),
+        ("Dubai Mall y fuentes", "Atracción", "📍", 0, "Centro comercial gigante con acuario y espectáculo de fuentes."),
+        ("Desierto de Dubai (safari)", "Excursión", "🚌", 60, "Dune bashing, campamento beduino y cena bajo las estrellas."),
+        ("Barrio Al Fahidi y Dubai Creek", "Sitio histórico", "🏰", 0, "Casas de coral, museos y paseo en abra por la creek histórica."),
+        ("Palm Jumeirah y Atlantis", "Atracción", "📍", 0, "La palma artificial con hoteles, playas y acuario."),
+    ],
+    "DEL": [
+        ("Taj Mahal", "Excursión", "🚌", 20, "La joya del arte mogol en Agra, a día completo desde Delhi."),
+        ("Fuerte Rojo", "Sitio histórico", "🏰", 8, "Imponente fortaleza de arenisca roja de la dinastía mogol."),
+        ("Qutub Minar", "Sitio histórico", "🏰", 10, "El minarete de ladrillo más alto del mundo."),
+        ("Humayun's Tomb", "Sitio histórico", "🏰", 5, "Tumba inspiración del Taj Mahal y jardines persas."),
+        ("Chandni Chowk y comida callejera", "Tour gastronómico", "🍷", 15, "Mercado caótico de especias, dulces y samosas."),
+    ],
+    "BOM": [
+        ("Gateway of India", "Sitio histórico", "🏰", 0, "Arco monumental frente al mar Arábigo, símbolo colonial de Bombay."),
+        ("Marine Drive", "Mirador", "🌄", 0, "Paseo marítimo en forma de C con vistas del atardecer y el Queen's Necklace."),
+        ("Dharavi y tour comunitario", "Tour guiado", "🚶", 25, "Recorrido por uno de los barrios más dinámicos y emprendedores de la ciudad."),
+        ("Crawford Market", "Atracción", "📍", 0, "Mercado victoriano de frutas, especias y artículos varios."),
+        ("Elephanta Caves", "Excursión", "⛴️", 10, "Templos rupestres en una isla del puerto de Bombay."),
+    ],
+    "ICN": [
+        ("Gyeongbokgung Palace", "Sitio histórico", "🏰", 3, "El palacio real más grande de Corea con cambio de guardia."),
+        ("Bukchon Hanok Village", "Sitio histórico", "🏰", 0, "Barrio tradicional de casas de madera entre palacios."),
+        ("N Seoul Tower", "Mirador", "🌄", 15, "Vistas panorámicas de Seúl desde la torre en el monte Namsan."),
+        ("Myeongdong", "Tour gastronómico", "🍷", 0, "Distrito de compras y comida callejera: tteokbokki, hotteok y cosmética."),
+        ("DMZ Tour", "Excursión", "🚌", 65, "Excursión a la zona desmilitarizada entre Corea del Norte y del Sur."),
+    ],
+    # ─── Oceanía y África ─────────────────────────────────────────────────
+    "SYD": [
+        ("Ópera de Sídney", "Espectáculo", "🎭", 30, "Icono arquitectónico mundial con recorridos y espectáculos."),
+        ("Puente del Puerto de Sídney", "Mirador", "🌄", 25, "Escalada o paseo con vistas de la bahía y la ópera."),
+        ("Bondi Beach", "Playa", "🏖️", 0, "La playa más famosa de Australia para surfistas y paseantes."),
+        ("Royal Botanic Garden", "Parque / Naturaleza", "🌳", 0, "Jardines frente al puerto con vistas a la ópera."),
+        ("Blue Mountains", "Excursión", "🚌", 70, "Día completo a acantilados, eucaliptos y las Three Sisters."),
+    ],
+    "MEL": [
+        ("Hosier Lane", "Museo", "🎨", 0, "Calle emblemática de arte urbano en el centro de Melbourne."),
+        ("Queen Victoria Market", "Atracción", "📍", 0, "Mercado histórico de alimentos, ropa y souvenirs."),
+        ("Great Ocean Road", "Excursión", "🚌", 120, "Una de las carreteras costeras más espectaculares del mundo."),
+        ("Royal Botanic Gardens", "Parque / Naturaleza", "🌳", 0, "Jardines extensos junto al río Yarra."),
+        ("Tour de cafés y brunch", "Tour gastronómico", "🍷", 30, "Cultura cafetera de Melbourne: flat white y avo toast."),
+    ],
+    "AKL": [
+        ("Sky Tower", "Mirador", "🌄", 25, "Vistas de Auckland y los volcanes desde la torre más alta del hemisferio sur."),
+        ("Waiheke Island", "Excursión", "⛴️", 45, "Isla de viñedos, playas y arte a 40 minutos en ferry."),
+        ("Waitomo Glowworm Caves", "Excursión", "🚌", 90, "Cavernas con gusanos luminiscentes en paseo en bote."),
+        ("Mount Eden", "Mirador", "🌄", 0, "Cráter volcánico con vista panorámica del centro de Auckland."),
+        ("Viaduct Harbour", "Paseo en barco", "🛥️", 30, "Puerto moderno con restaurantes, yates y paseos marítimos."),
+    ],
+    "CPT": [
+        ("Table Mountain", "Mirador", "🌄", 25, "Subida en teleférico a la montaña plana con vistas de Ciudad del Cabo."),
+        ("Cabo de Buena Esperanza", "Excursión", "🚌", 80, "Reserva natural y punto más suroccidental de África."),
+        ("V&A Waterfront", "Atracción", "📍", 0, "Puerto histórico con tiendas, restaurantes y vistas de Table Mountain."),
+        ("Boulders Beach", "Playa", "🏖️", 10, "Playa con colonia de pingüinos africanos."),
+        ("Kirstenbosch Gardens", "Parque / Naturaleza", "🌳", 8, "Jardín botánico en las laderas de Table Mountain."),
+    ],
+    "CAI": [
+        ("Pirámides de Giza", "Excursión", "🚌", 30, "Las últimas maravillas de la antigüedad y la Esfinge."),
+        ("Museo Egipcio", "Museo", "🏛️", 12, "Tesoros faraónicos, incluida la máscara de Tutankamón."),
+        ("Mercado de Jan el-Jalili", "Atracción", "📍", 0, "Mercado histórico de especias, perfumes y artesanías."),
+        ("Mezquita de Mohamed Ali", "Templo / Iglesia", "⛪", 5, "Ciudadela otomana con vistas de El Cairo."),
+        ("Crucero por el Nilo", "Paseo en barco", "🛥️", 25, "Cena y espectáculo navegando por el río Nilo."),
+    ],
     "_default": [
         ("Tour guiado por el centro histórico", "Tour guiado", "🚶", 20, "La mejor forma de orientarte y conocer la historia del destino el primer día."),
         ("Museo principal de la ciudad", "Museo", "🏛️", 15, "La colección más importante del destino para entender su cultura."),
@@ -204,12 +484,53 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
 # Nombre de ciudad normalizado → clave IATA del dataset curado
 # (cubre aeropuertos secundarios como ORY/LGW que comparten ciudad)
 _IATA_POR_CIUDAD: dict[str, str] = {
+    # Latinoamérica
     "bogota": "BOG", "medellin": "MDE", "cartagena": "CTG",
-    "ciudad de mexico": "MEX", "cancun": "CUN", "miami": "MIA",
-    "orlando": "MCO", "nueva york": "JFK", "new york": "JFK",
-    "lima": "LIM", "madrid": "MAD", "barcelona": "BCN",
-    "paris": "CDG", "roma": "FCO", "rome": "FCO",
+    "ciudad de mexico": "MEX", "mexico city": "MEX", "cancun": "CUN",
+    "miami": "MIA", "orlando": "MCO",
+    "nueva york": "JFK", "new york": "JFK",
+    "lima": "LIM",
+    "santiago": "SCL", "santiago de chile": "SCL",
+    "buenos aires": "EZE",
+    "rio de janeiro": "GIG",
+    "sao paulo": "GRU", "saopaulo": "GRU",
+    "quito": "UIO",
+    "panama": "PTY", "ciudad de panama": "PTY",
+    # Norteamérica
+    "los angeles": "LAX", "san francisco": "SFO", "seattle": "SEA",
+    "las vegas": "LAS",
+    "atlanta": "ATL", "houston": "IAH", "dallas": "DFW",
+    "boston": "BOS", "washington": "IAD", "washington dc": "IAD",
+    "toronto": "YYZ", "vancouver": "YVR",
+    # Europa
+    "madrid": "MAD", "barcelona": "BCN",
+    "paris": "CDG", "paris": "CDG",
+    "roma": "FCO", "rome": "FCO",
     "londres": "LHR", "london": "LHR",
+    "amsterdam": "AMS",
+    "berlin": "BER",
+    "munich": "MUC", "munchen": "MUC",
+    "lisboa": "LIS", "lisbon": "LIS",
+    "atenas": "ATH", "athens": "ATH",
+    "viena": "VIE", "vienna": "VIE",
+    "praga": "PRG", "prague": "PRG",
+    "dublin": "DUB",
+    "estambul": "IST", "istanbul": "IST",
+    # Asia / Medio Oriente
+    "bangkok": "BKK",
+    "tokio": "NRT", "tokyo": "NRT",
+    "singapur": "SIN", "singapore": "SIN",
+    "hong kong": "HKG",
+    "dubai": "DXB",
+    "delhi": "DEL", "nueva delhi": "DEL", "new delhi": "DEL",
+    "mumbai": "BOM", "bombay": "BOM",
+    "seul": "ICN", "seoul": "ICN",
+    # Oceanía / África
+    "sidney": "SYD", "sydney": "SYD",
+    "melbourne": "MEL",
+    "auckland": "AKL",
+    "ciudad del cabo": "CPT", "cape town": "CPT",
+    "el cairo": "CAI", "cairo": "CAI",
 }
 
 
@@ -413,6 +734,48 @@ def _boost_por_contexto(
     return sorted(actividades, key=_key)
 
 
+def _tiene_curado(iata: str | None, ciudad: str) -> bool:
+    """Indica si existe un dataset curado para este destino."""
+    key = (iata or "").upper()
+    if key and key in ACTIVIDADES_CURADAS:
+        return True
+    key = _IATA_POR_CIUDAD.get(_normalizar(ciudad), "")
+    return key in ACTIVIDADES_CURADAS
+
+
+def _fusionar_actividades(
+    curadas: list[dict],
+    reales: list[dict],
+    limite: int,
+) -> list[dict]:
+    """
+    Combina actividades curadas (prioridad) con actividades reales de OpenTripMap,
+    evitando duplicados por nombre. Mantiene el orden de cada lista.
+    """
+    vistos: set[str] = set()
+    resultado: list[dict] = []
+
+    for act in curadas:
+        nombre = act.get("nombre", "").strip().lower()
+        if not nombre or nombre in vistos:
+            continue
+        vistos.add(nombre)
+        resultado.append(act)
+        if len(resultado) >= limite:
+            return resultado
+
+    for act in reales:
+        nombre = act.get("nombre", "").strip().lower()
+        if not nombre or nombre in vistos:
+            continue
+        vistos.add(nombre)
+        resultado.append(act)
+        if len(resultado) >= limite:
+            return resultado
+
+    return resultado
+
+
 def _actividades_curadas(
     ciudad: str,
     iata: str | None,
@@ -423,6 +786,7 @@ def _actividades_curadas(
     fecha_regreso: str = "",
     clima: dict | None = None,
     pasajeros: int = 1,
+    fotos_pexels: list[str] | None = None,
 ) -> dict:
     """Selección curada local: por IATA, por nombre de ciudad o '_default'."""
     key = (iata or "").upper()
@@ -431,10 +795,13 @@ def _actividades_curadas(
         key = _IATA_POR_CIUDAD.get(_normalizar(ciudad), "")
         entradas = ACTIVIDADES_CURADAS.get(key, ACTIVIDADES_CURADAS["_default"])
 
-    actividades = [
-        _armar_actividad(nombre, categoria, icono, precio, descripcion, ciudad, fuente="curado")
-        for nombre, categoria, icono, precio, descripcion in entradas
-    ]
+    actividades: list[dict] = []
+    fotos = fotos_pexels or []
+    for i, (nombre, categoria, icono, precio, descripcion) in enumerate(entradas):
+        act = _armar_actividad(nombre, categoria, icono, precio, descripcion, ciudad, fuente="curado")
+        act["foto_url"] = fotos[i % len(fotos)] if fotos else ""
+        actividades.append(act)
+
     actividades = _boost_por_contexto(
         actividades, tier=tier, clima=clima,
         pasajeros=pasajeros, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
@@ -584,6 +951,7 @@ async def _consultar_opentripmap(
     fecha_regreso: str = "",
     clima: dict | None = None,
     pasajeros: int = 1,
+    fotos_pexels: list[str] | None = None,
 ) -> list[dict]:
     """
     Mejores POIs turísticos alrededor del centro de la ciudad, ordenados por
@@ -645,8 +1013,8 @@ async def _consultar_opentripmap(
     textos_originales = [d.get("descripcion", "") for d in detalles]
     textos_traducidos = await _traducir_descripciones(textos_originales)
 
-    # 4) Fotos de fallback con Pexels (una sola llamada por ciudad)
-    fotos_pexels = await _fotos_pexels(ciudad, limite=limite)
+    # 4) Fotos de fallback (proporcionadas por el caller para evitar doble llamada)
+    fotos_pexels = fotos_pexels or []
 
     # 5) Armar actividades con descripción enriquecida + foto
     actividades: list[dict] = []
@@ -695,7 +1063,7 @@ async def obtener_actividades(
     """
     Mejores actividades del destino.
 
-    Cascada: cache → OpenTripMap (si hay key) → cache stale → selección curada.
+    Cascada: cache → OpenTripMap (si hay key) + curado local → cache stale → curado.
     Siempre devuelve un dict con 'ciudad', 'actividades', 'precision' y 'aviso' —
     nunca lanza excepción ni devuelve la lista vacía.
 
@@ -715,18 +1083,39 @@ async def obtener_actividades(
     if cached:
         return cached
 
+    # Fotos de stock una sola vez; se pasan a curado y a OpenTripMap para evitar
+    # llamadas dobles y mantener consistencia visual.
+    fotos_pexels = await _fotos_pexels(ciudad_limpia, limite=limite)
+
     try:
         if settings.opentripmap_api_key:
             coords = await resolver_coords(ciudad_limpia, iata=iata)
             if coords:
                 lat, lon = coords
                 try:
-                    actividades = await _consultar_opentripmap(
+                    actividades_reales = await _consultar_opentripmap(
                         lat, lon, ciudad_limpia, limite,
                         tier=tier, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
                         clima=clima, pasajeros=pasajeros,
+                        fotos_pexels=fotos_pexels,
                     )
-                    if actividades:
+                    if actividades_reales:
+                        # Si tenemos curado local para este destino, fusionamos:
+                        # curado primero (calidad garantizada en español), reales
+                        # para rellenar sin duplicar.
+                        if _tiene_curado(iata, ciudad_limpia):
+                            curado = _actividades_curadas(
+                                ciudad_limpia, iata, limite,
+                                tier=tier, fecha_salida=fecha_salida,
+                                fecha_regreso=fecha_regreso, clima=clima,
+                                pasajeros=pasajeros, fotos_pexels=fotos_pexels,
+                            )["actividades"]
+                            actividades = _fusionar_actividades(
+                                curado, actividades_reales, limite
+                            )
+                        else:
+                            actividades = actividades_reales[:limite]
+
                         resultado = {
                             "ciudad":      ciudad_limpia,
                             "actividades": actividades,
@@ -748,5 +1137,5 @@ async def obtener_actividades(
     return _actividades_curadas(
         ciudad_limpia, iata, limite,
         tier=tier, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
-        clima=clima, pasajeros=pasajeros,
+        clima=clima, pasajeros=pasajeros, fotos_pexels=fotos_pexels,
     )
