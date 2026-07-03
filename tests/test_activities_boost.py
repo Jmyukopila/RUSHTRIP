@@ -159,3 +159,171 @@ async def test_obtener_actividades_backward_compat():
     resultado = await obtener_actividades("Bogotá", iata="BOG", limite=5)
     assert resultado["precision"] == "estimada"
     assert len(resultado["actividades"]) == 5
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests Fase 2 — enriquecimiento OpenTripMap (/places/xid, fotos, traducción)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_enriquecer_poi_opentripmap(monkeypatch):
+    from services.activities import _enriquecer_poi_opentripmap
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {
+                "xid": "test-xid",
+                "name": "Museo Test",
+                "image": "https://example.com/museo.jpg",
+                "wikipedia_extracts": {"text": "A great museum in the city."},
+            }
+
+    async def fake_request(*args, **kwargs):
+        return FakeResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    detalle = await _enriquecer_poi_opentripmap("test-xid", "Madrid")
+    assert detalle["descripcion"] == "A great museum in the city."
+    assert "museo.jpg" in detalle["foto_url"]
+
+
+@pytest.mark.asyncio
+async def test_traducir_descripciones_sin_key_devuelve_original():
+    from services.activities import _traducir_descripciones
+
+    textos = ["A great museum.", "A nice park."]
+    resultado = await _traducir_descripciones(textos)
+    assert resultado == textos
+
+
+@pytest.mark.asyncio
+async def test_traducir_descripciones_con_deepl(monkeypatch):
+    from services.activities import _traducir_descripciones
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "deepl_api_key", "fake-deepl-key")
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {
+                "translations": [
+                    {"text": "Un gran museo."},
+                    {"text": "Un bonito parque."},
+                ]
+            }
+
+    async def fake_request(*args, **kwargs):
+        return FakeResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    textos = ["A great museum.", "A nice park."]
+    resultado = await _traducir_descripciones(textos)
+    assert resultado == ["Un gran museo.", "Un bonito parque."]
+
+
+@pytest.mark.asyncio
+async def test_consultar_opentripmap_enriquece_descripcion_y_foto(monkeypatch):
+    from services.activities import _consultar_opentripmap
+
+    class RadiusResp:
+        status_code = 200
+        def json(self):
+            return [
+                {
+                    "xid": "xid-1",
+                    "name": "Museo del Test",
+                    "rate": 5,
+                    "kinds": "museums,interesting_places",
+                },
+            ]
+
+    class DetailResp:
+        status_code = 200
+        def json(self):
+            return {
+                "xid": "xid-1",
+                "image": "https://example.com/test.jpg",
+                "wikipedia_extracts": {"text": "Museum description in english."},
+            }
+
+    class PexelsResp:
+        status_code = 200
+        def json(self):
+            return {
+                "photos": [
+                    {"src": {"medium": "https://pexels.com/fallback.jpg"}}
+                ]
+            }
+
+    calls = []
+    async def fake_request(method, url, **kwargs):
+        calls.append((method, url))
+        if "radius" in url:
+            return RadiusResp()
+        if "xid" in url:
+            return DetailResp()
+        if "pexels" in url:
+            return PexelsResp()
+        return RadiusResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    actividades = await _consultar_opentripmap(40.0, -3.0, "Madrid", 8)
+
+    assert len(actividades) == 1
+    act = actividades[0]
+    assert act["nombre"] == "Museo del Test"
+    assert "foto_url" in act
+    assert act["foto_url"] == "https://example.com/test.jpg"
+    # Descripción enriquecida (sin DeepL key queda en inglés)
+    assert "english" in act["descripcion"].lower()
+
+
+@pytest.mark.asyncio
+async def test_obtener_actividades_con_opentripmap(monkeypatch):
+    """Si hay OPENTRIPMAP_API_KEY y responde, devuelve precision 'real'."""
+    from services.activities import obtener_actividades
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "opentripmap_api_key", "fake-otm-key")
+    monkeypatch.setattr(settings, "pexels_api_key", "")
+
+    class RadiusResp:
+        status_code = 200
+        def json(self):
+            return [
+                {
+                    "xid": "xid-1",
+                    "name": "Parque Test",
+                    "rate": 5,
+                    "kinds": "gardens_and_parks,interesting_places",
+                },
+            ]
+
+    class DetailResp:
+        status_code = 200
+        def json(self):
+            return {
+                "xid": "xid-1",
+                "image": "",
+                "wikipedia_extracts": {"text": "A nice park."},
+            }
+
+    async def fake_request(method, url, **kwargs):
+        if "radius" in url:
+            return RadiusResp()
+        if "xid" in url:
+            return DetailResp()
+        return RadiusResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    resultado = await obtener_actividades("Madrid", iata="MAD", limite=8)
+    assert resultado["precision"] == "real"
+    assert len(resultado["actividades"]) == 1
+    assert resultado["actividades"][0]["categoria"] == "Parque / Naturaleza"

@@ -5,6 +5,7 @@
 # Las actividades son recomendaciones informativas: no entran en el cálculo del
 # presupuesto del plan porque la reserva y el pago se realizan en sitios externos.
 
+import asyncio
 import logging
 import unicodedata
 from datetime import datetime, timedelta
@@ -26,6 +27,13 @@ _TTL_ACTIVIDADES = 7 * 24 * 3600
 # Radio de búsqueda alrededor del centro de la ciudad (metros)
 _RADIO_M = 12000
 _LIMITE_DEFAULT = 8
+
+# URLs y TTLs para enriquecimiento de POIs (detalle + foto + traducción)
+_DETALLE_URL = "https://api.opentripmap.com/0.1/en/places/xid/{xid}"
+_PEXELS_URL = "https://api.pexels.com/v1/search"
+_TTL_DETALLE = 30 * 24 * 3600      # detalles estables
+_TTL_TRADUCCION = 30 * 24 * 3600   # traducciones estables
+_TTL_PEXELS = 7 * 24 * 3600        # fotos de stock
 
 _AVISO_PRECIOS = (
     "Precios orientativos por tipo de actividad. "
@@ -439,6 +447,132 @@ def _actividades_curadas(
     }
 
 
+async def _fotos_pexels(ciudad: str, limite: int = 12) -> list[str]:
+    """
+    Devuelve URLs de fotos de actividades/turismo para la ciudad usando Pexels.
+    Se cachea por ciudad; sin API key devuelve lista vacía.
+    """
+    if not settings.pexels_api_key:
+        return []
+
+    cache_key = f"pexels_activities:{ciudad.lower().strip()}"
+    cached = cache_get(cache_key)
+    if cached and isinstance(cached, list):
+        return cached
+
+    try:
+        resp = await request_with_retry(
+            "GET", _PEXELS_URL,
+            provider="pexels",
+            max_retries=1,
+            headers={"Authorization": settings.pexels_api_key},
+            params={
+                "query": f"{ciudad} tourist attraction",
+                "per_page": limite,
+                "orientation": "landscape",
+            },
+        )
+        data = resp.json()
+        fotos = [p.get("src", {}).get("medium", "") for p in data.get("photos", [])]
+        fotos = [f for f in fotos if f]
+        if fotos:
+            cache_set(cache_key, fotos, provider="pexels", ttl_seconds=_TTL_PEXELS)
+        return fotos
+    except Exception as e:
+        logger.warning(f"No se pudieron cargar fotos de Pexels para '{ciudad}': {e}")
+        return []
+
+
+async def _traducir_descripciones(textos: list[str]) -> list[str]:
+    """
+    Traduce una lista de textos al español vía DeepL API Free.
+    Si no hay key, la API falla o no hay textos, devuelve los originales.
+    Se cachea la traducción completa como un solo bloque.
+    """
+    if not textos or not settings.deepl_api_key:
+        return textos
+
+    # Normalizar: ignorar vacíos y plantillas (que ya están en español)
+    indices_a_traducir = [i for i, t in enumerate(textos) if t and len(t.strip()) > 5]
+    if not indices_a_traducir:
+        return textos
+
+    cache_key = f"deepl:{hash(tuple(textos))}"
+    cached = cache_get(cache_key)
+    if cached and isinstance(cached, list) and len(cached) == len(textos):
+        return cached
+
+    try:
+        payload = {
+            "auth_key": settings.deepl_api_key,
+            "target_lang": "ES",
+        }
+        for i in indices_a_traducir:
+            payload.setdefault("text", []).append(textos[i])
+
+        resp = await request_with_retry(
+            "POST", settings.deepl_api_url,
+            provider="deepl",
+            max_retries=1,
+            data=payload,
+        )
+        data = resp.json()
+        traducciones = [t.get("text", "") for t in data.get("translations", [])]
+
+        resultado = list(textos)
+        for idx, trad in zip(indices_a_traducir, traducciones):
+            if trad:
+                resultado[idx] = trad
+
+        cache_set(cache_key, resultado, provider="deepl", ttl_seconds=_TTL_TRADUCCION)
+        return resultado
+    except Exception as e:
+        logger.warning(f"DeepL no pudo traducir descripciones: {e}")
+        return textos
+
+
+async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
+    """
+    Consulta el detalle de un POI por su XID y devuelve un dict con
+    descripción (preferentemente en español) y foto_url.
+    """
+    if not xid:
+        return {"descripcion": "", "foto_url": ""}
+
+    cache_key = f"opentripmap:xid:{xid}"
+    cached = cache_get(cache_key)
+    if cached and isinstance(cached, dict):
+        return cached
+
+    try:
+        url = _DETALLE_URL.format(xid=xid)
+        resp = await request_with_retry(
+            "GET", url,
+            provider="opentripmap",
+            max_retries=1,
+            params={"apikey": settings.opentripmap_api_key},
+        )
+        data = resp.json()
+
+        descripcion = ""
+        # Preferir extracto de Wikipedia
+        wiki = data.get("wikipedia_extracts") or {}
+        descripcion = (wiki.get("text") or "").strip()
+        # Fallback a info.descr
+        if not descripcion:
+            info = data.get("info") or {}
+            descripcion = (info.get("descr") or "").strip()
+
+        foto_url = data.get("image") or data.get("preview", {}).get("source") or ""
+
+        resultado = {"descripcion": descripcion, "foto_url": foto_url or ""}
+        cache_set(cache_key, resultado, provider="opentripmap", ttl_seconds=_TTL_DETALLE)
+        return resultado
+    except Exception as e:
+        logger.warning(f"No se pudo enriquecer POI {xid} de OpenTripMap: {e}")
+        return {"descripcion": "", "foto_url": ""}
+
+
 async def _consultar_opentripmap(
     lat: float,
     lon: float,
@@ -454,6 +588,8 @@ async def _consultar_opentripmap(
     """
     Mejores POIs turísticos alrededor del centro de la ciudad, ordenados por
     relevancia ('rate' de OpenTripMap). Lanza ExternalAPIError si la API falla.
+    Enriquece cada POI con detalle (/places/xid), foto propia o Pexels, y
+    traduce la descripción al español vía DeepL si hay key configurada.
     El boost por contexto se aplica sobre la lista final.
     """
     resp = await request_with_retry(
@@ -464,9 +600,15 @@ async def _consultar_opentripmap(
             "radius": _RADIO_M,
             "lon":    lon,
             "lat":    lat,
-            "kinds":  "interesting_places,amusements,museums",
+            "kinds":  (
+                "interesting_places,amusements,museums,art_galleries,"
+                "historic,historic_architecture,castles,fortifications,"
+                "monuments_and_memorials,archaeology,religion,churches,"
+                "cathedrals,view_points,towers,gardens_and_parks,natural,"
+                "beaches,theatres_and_entertainments,cinemas"
+            ),
             "rate":   2,
-            "limit":  limite * 3,
+            "limit":  limite * 4,
             "format": "json",
             "apikey": settings.opentripmap_api_key,
         },
@@ -478,23 +620,59 @@ async def _consultar_opentripmap(
             status_code=resp.status_code,
         )
 
-    actividades = []
+    # 1) POIs base ordenados por relevancia, sin duplicados
+    pois_base = []
     vistos: set[str] = set()
-    pois = sorted(resp.json(), key=lambda p: p.get("rate", 0), reverse=True)
-    for poi in pois:
+    for poi in sorted(resp.json(), key=lambda p: p.get("rate", 0), reverse=True):
         nombre = (poi.get("name") or "").strip()
         if not nombre or nombre.lower() in vistos:
             continue
         vistos.add(nombre.lower())
-        categoria, icono, precio = _clasificar_kinds(poi.get("kinds", ""))
-        actividades.append(_armar_actividad(
-            nombre, categoria, icono, precio,
-            _descripcion_por_categoria(categoria, ciudad),
-            ciudad, fuente="opentripmap",
-        ))
-        if len(actividades) >= limite:
+        pois_base.append(poi)
+        if len(pois_base) >= limite:
             break
 
+    if not pois_base:
+        return []
+
+    # 2) Enriquecer detalles en paralelo
+    detalles = await asyncio.gather(*(
+        _enriquecer_poi_opentripmap(poi.get("xid", ""), ciudad)
+        for poi in pois_base
+    ))
+
+    # 3) Traducir descripciones reales al español (si hay DeepL key)
+    textos_originales = [d.get("descripcion", "") for d in detalles]
+    textos_traducidos = await _traducir_descripciones(textos_originales)
+
+    # 4) Fotos de fallback con Pexels (una sola llamada por ciudad)
+    fotos_pexels = await _fotos_pexels(ciudad, limite=limite)
+
+    # 5) Armar actividades con descripción enriquecida + foto
+    actividades: list[dict] = []
+    for i, poi in enumerate(pois_base):
+        nombre = (poi.get("name") or "").strip()
+        categoria, icono, precio = _clasificar_kinds(poi.get("kinds", ""))
+        detalle = detalles[i]
+        descripcion_raw = textos_traducidos[i] or detalle.get("descripcion", "")
+
+        # Si no hay descripción real, usar plantilla en español
+        if not descripcion_raw or len(descripcion_raw) < 10:
+            descripcion = _descripcion_por_categoria(categoria, ciudad)
+        else:
+            descripcion = descripcion_raw
+
+        foto_url = detalle.get("foto_url", "")
+        if not foto_url and fotos_pexels:
+            foto_url = fotos_pexels[i % len(fotos_pexels)]
+
+        act = _armar_actividad(
+            nombre, categoria, icono, precio, descripcion, ciudad, fuente="opentripmap",
+        )
+        act["foto_url"] = foto_url
+        actividades.append(act)
+
+    # 6) Boost contextual
     actividades = _boost_por_contexto(
         actividades, tier=tier, clima=clima,
         pasajeros=pasajeros, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,

@@ -30,7 +30,14 @@ async def lifespan(app: FastAPI):
     logger.info("Cache persistente y rate limiter inicializados (SQLite WAL)")
 
     yield
-    await http_client.aclose()
+    try:
+        await http_client.aclose()
+    except RuntimeError as exc:
+        # En tests mezclados (sync TestClient + async pytest-asyncio) en Windows
+        # el event loop puede cerrarse antes de que httpx libere sus conexiones.
+        # Ignoramos ese caso; en producción el loop siempre está vivo.
+        if "Event loop is closed" not in str(exc):
+            raise
 
 app = FastAPI(
     lifespan=lifespan,
