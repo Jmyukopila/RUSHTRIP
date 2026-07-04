@@ -1,9 +1,21 @@
 import FlightRoute from './FlightRoute';
+import { TRANSPORT_ICONS } from './icons';
 
 const ESCALAS_TEXT = {
   0: 'Directo',
   1: '1 escala',
 };
+
+// Sin logo de operadora (bus/tren), mostramos el icono del medio en su lugar
+function MedioBadge({ medio, size = 'w-8 h-8' }) {
+  const Icon = TRANSPORT_ICONS[medio];
+  if (!Icon) return null;
+  return (
+    <span className={`${size} rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0`}>
+      <Icon className="w-4 h-4" />
+    </span>
+  );
+}
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -21,18 +33,20 @@ function formatDate(dateStr) {
 export default function FlightCard({ vuelo, variant = 'default' }) {
   if (!vuelo) return null;
 
-  const escalasText = vuelo.escalas_text || ESCALAS_TEXT[vuelo.escalas] || `${vuelo.escalas} escalas`;
+  const escalasText = vuelo.escalas_texto || vuelo.escalas_text || ESCALAS_TEXT[vuelo.escalas] || `${vuelo.escalas} escalas`;
 
   if (variant === 'compact') {
     return (
       <div className="flex items-center gap-3 p-3 bg-card rounded-lg border border-border-100 hover-lift">
-        {vuelo.logo_url && (
+        {vuelo.logo_url ? (
           <img
             src={vuelo.logo_url}
             alt={vuelo.aerolinea_nombre}
             className="w-8 h-8 object-contain rounded shrink-0"
             onError={(e) => { e.target.style.display = 'none'; }}
           />
+        ) : (
+          <MedioBadge medio={vuelo.medio} />
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-text truncate">{vuelo.aerolinea_nombre}</p>
@@ -53,13 +67,15 @@ export default function FlightCard({ vuelo, variant = 'default' }) {
     <div className="card-base p-4 sm:p-5">
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-start gap-4 sm:gap-3 shrink-0">
-          {vuelo.logo_url && (
+          {vuelo.logo_url ? (
             <img
               src={vuelo.logo_url}
               alt={vuelo.aerolinea_nombre}
               className="w-11 h-11 object-contain rounded-lg bg-white border border-border-100 p-1.5 shrink-0"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
+          ) : (
+            <MedioBadge medio={vuelo.medio} size="w-11 h-11" />
           )}
           <div className="sm:hidden">
             <p className="font-medium text-text text-sm">{vuelo.aerolinea_nombre}</p>

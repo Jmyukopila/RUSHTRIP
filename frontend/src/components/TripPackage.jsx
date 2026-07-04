@@ -7,7 +7,7 @@ import { crearReserva } from '../api/client';
 import { AFFILIATE_LINKS } from '../constants';
 import {
   IconPlane, IconHotel, IconCar, IconCheck, IconCheckCircle, IconWarning,
-  IconLeaf, IconStarRow,
+  IconLeaf, IconStarRow, TRANSPORT_ICONS, TRANSPORT_LABELS,
 } from './icons';
 
 function formatMoney(n) {
@@ -115,6 +115,9 @@ export default function TripPackage({ data, onModify }) {
   const plan = data.plan_optimo;
   if (!plan || !plan.vuelo) return null;
 
+  // Medio de transporte del renglón principal ('avion' | 'bus' | 'tren')
+  const medio = plan.vuelo.medio || data.medio_transporte || 'avion';
+
   const presupuesto = data.presupuesto || 0;
   const total = plan.total || 0;
   const dentro = plan.dentro_presupuesto ?? (total <= presupuesto);
@@ -213,16 +216,17 @@ export default function TripPackage({ data, onModify }) {
       <div className="relative px-5 sm:px-6">
         <div className="rounded-xl bg-white/60 border border-border-50 px-4 divide-y divide-border-50">
           <PackageRow
-            icon={IconPlane}
+            icon={TRANSPORT_ICONS[medio] || IconPlane}
             iconTone="bg-accent/10 text-accent"
-            title={plan.vuelo.aerolinea_nombre || 'Vuelo'}
+            title={plan.vuelo.aerolinea_nombre || (medio === 'avion' ? 'Vuelo' : TRANSPORT_LABELS[medio])}
             subtitle={[
-              plan.vuelo.escalas === 0 ? 'Directo' : plan.vuelo.escalas ? `${plan.vuelo.escalas} escala${plan.vuelo.escalas > 1 ? 's' : ''}` : null,
+              medio !== 'avion' ? `En ${TRANSPORT_LABELS[medio].toLowerCase()}` : null,
+              plan.vuelo.escalas_texto || (plan.vuelo.escalas === 0 ? 'Directo' : plan.vuelo.escalas ? `${plan.vuelo.escalas} escala${plan.vuelo.escalas > 1 ? 's' : ''}` : null),
               plan.vuelo.co2_kg != null ? `${plan.vuelo.co2_kg} kg CO₂/pers.` : null,
             ].filter(Boolean).join(' · ')}
             price={plan.vuelo.precio_total}
             link={plan.vuelo.link_compra}
-            linkLabel="Ver vuelo"
+            linkLabel={medio === 'avion' ? 'Ver vuelo' : `Ver ${TRANSPORT_LABELS[medio].toLowerCase()}`}
           />
 
           {plan.hotel && (

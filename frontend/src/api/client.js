@@ -135,6 +135,11 @@ export async function searchFlights(params) {
   return response.data;
 }
 
+export async function searchTransport(params) {
+  const response = await api.get('/transport/', { params });
+  return response.data;
+}
+
 export async function searchHotels(params) {
   const response = await api.get('/hotels/', { params });
   return response.data;

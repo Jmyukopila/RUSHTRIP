@@ -47,6 +47,7 @@ class PlanRequest(BaseModel):
     tier:          str   = Field("estandar", description="Nivel de calidad: economico, estandar, premium")
     modo:          str   = Field("exacto", description="Modo de busqueda: exacto o flexible")
     duracion_dias: int   = Field(7, ge=1, le=14, description="Duracion en dias (modo flexible)")
+    medio_transporte: str = Field("avion", description="Medio de transporte: avion, bus o tren")
 
     @field_validator("origen", "destino")
     @classmethod
@@ -69,6 +70,15 @@ class PlanRequest(BaseModel):
         v = v.lower().strip()
         if v not in ("exacto", "flexible"):
             raise ValueError("Modo invalido. Use: exacto, flexible")
+        return v
+
+    @field_validator("medio_transporte")
+    @classmethod
+    def validar_medio_transporte(cls, v: str) -> str:
+        """Valida que el medio de transporte sea uno de los soportados."""
+        v = v.lower().strip()
+        if v not in ("avion", "bus", "tren"):
+            raise ValueError("Medio de transporte invalido. Use: avion, bus, tren")
         return v
 
     @field_validator("fecha_salida", "fecha_regreso")
@@ -199,6 +209,7 @@ async def crear_plan(body: PlanRequest, usuario: dict = Depends(requerir_usuario
         tier=             body.tier,
         modo=             body.modo,
         duracion_dias=    body.duracion_dias,
+        medio_transporte= body.medio_transporte,
     )
 
     # Registrar el destino en las preferencias del usuario (no critico).
@@ -236,6 +247,7 @@ async def min_budget(
     incluir_hotel: bool = True,
     incluir_vehiculo: bool = False,
     tier: str = "estandar",
+    medio_transporte: str = "avion",
 ):
     try:
         origen_iata = await resolver_iata(origen)
@@ -253,6 +265,7 @@ async def min_budget(
         incluir_hotel=incluir_hotel,
         incluir_vehiculo=incluir_vehiculo,
         tier=tier if tier in ("economico", "estandar", "premium") else "estandar",
+        medio_transporte=medio_transporte if medio_transporte in ("avion", "bus", "tren") else "avion",
     )
 
     return resultado

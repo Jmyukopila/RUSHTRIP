@@ -1,8 +1,24 @@
 # tests/test_plan.py
 # Tests del orquestador de planes: modo flexible con mínimo de llamadas
-# a la API de vuelos (búsqueda por mes + confirmación exacta).
+# a la API de vuelos (búsqueda por mes + confirmación exacta) y medio de
+# transporte elegido por el usuario (avión/bus/tren) con degradación a avión.
+
+import pytest
 
 import services.plan as plan
+
+
+@pytest.fixture
+def sin_clima_ni_actividades(monkeypatch):
+    """Evita llamadas de red de clima/actividades dentro de generar_plan."""
+    import services.weather as weather
+    import services.activities as activities
+
+    async def nada(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(weather, "obtener_clima", nada)
+    monkeypatch.setattr(activities, "obtener_actividades", nada)
 
 
 async def test_resolver_ciudad_destino_mapeo_local(monkeypatch):
@@ -80,3 +96,66 @@ async def test_vuelos_flexibles_sin_vuelos_en_el_mes(monkeypatch):
     assert len(llamadas) == 2
     assert (fs, fr) == ("2026-10-01", "2026-10-08")
     assert res["vuelos"]
+
+
+async def test_generar_plan_en_bus(monkeypatch, sin_clima_ni_actividades):
+    async def fake_transporte(medio, origen, destino, fs, fr, pasajeros=1):
+        return {"aviso": None, "precision": "estimada", "opciones": [
+            {"medio": medio, "aerolinea": "", "salida": fs,
+             "precio_por_persona": 60.0, "precio_total": 60.0},
+        ]}
+
+    async def fake_vuelos(*args, **kwargs):
+        raise AssertionError("con medio_transporte=bus no debe buscar vuelos")
+
+    monkeypatch.setattr(plan, "buscar_transporte", fake_transporte)
+    monkeypatch.setattr(plan, "buscar_vuelos", fake_vuelos)
+
+    res = await plan.generar_plan(
+        "MAD", "BCN", "2026-08-10", "2026-08-17", presupuesto=800,
+        incluir_hotel=False, medio_transporte="bus",
+    )
+
+    assert res["medio_transporte"] == "bus"
+    assert res["plan_optimo"]["vuelo"]["medio"] == "bus"
+    # El concepto de aeropuerto alternativo no aplica al transporte terrestre
+    assert res["aeropuertos_alternativos"] == []
+
+
+async def test_generar_plan_bus_no_viable_degrada_a_avion(monkeypatch, sin_clima_ni_actividades):
+    llamadas_vuelo = []
+
+    async def fake_vuelos(origen, destino, fs, fr, pax):
+        llamadas_vuelo.append(destino)
+        return {"vuelos": [
+            {"aerolinea": "AV", "salida": fs, "precio_por_persona": 500.0, "precio_total": 500.0},
+        ], "precision": "exacta", "aviso": None}
+
+    monkeypatch.setattr(plan, "buscar_vuelos", fake_vuelos)
+
+    # BOG→MAD ~8000 km: imposible en bus → el plan cae a avión con aviso
+    res = await plan.generar_plan(
+        "BOG", "MAD", "2026-08-10", "2026-08-17", presupuesto=900,
+        incluir_hotel=False, medio_transporte="bus",
+    )
+
+    assert res["medio_transporte"] == "avion"
+    assert "no es viable" in res["aviso"]
+    assert "MAD" in llamadas_vuelo  # buscó vuelos como alternativa
+
+
+def test_presupuesto_minimo_bus_menor_que_avion_en_ruta_corta():
+    avion = plan.calcular_presupuesto_minimo("MAD", "BCN", noches=7, pasajeros=1, incluir_hotel=False)
+    bus = plan.calcular_presupuesto_minimo(
+        "MAD", "BCN", noches=7, pasajeros=1, incluir_hotel=False, medio_transporte="bus",
+    )
+    assert bus["presupuesto_minimo_sugerido"] < avion["presupuesto_minimo_sugerido"]
+
+
+def test_presupuesto_minimo_bus_no_viable_usa_precio_de_avion():
+    avion = plan.calcular_presupuesto_minimo("BOG", "MAD", noches=7, pasajeros=1, incluir_hotel=False)
+    bus = plan.calcular_presupuesto_minimo(
+        "BOG", "MAD", noches=7, pasajeros=1, incluir_hotel=False, medio_transporte="bus",
+    )
+    # Coherente con la degradación del plan: ruta no viable → mínimo de avión
+    assert bus["presupuesto_minimo_sugerido"] == avion["presupuesto_minimo_sugerido"]

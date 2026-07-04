@@ -9,6 +9,7 @@ from core.config import settings
 from services.flights import buscar_vuelos
 from services.hotels  import buscar_hoteles, _calcular_noches, PRECIO_REFERENCIA_HOTEL
 from services.cars    import buscar_coches
+from services.transport import buscar_transporte, ruta_viable, precio_transporte_minimo, MEDIOS as MEDIOS_TERRESTRES
 from services.airports import aeropuertos_alternativos, buscar_aeropuerto
 
 logger = logging.getLogger(__name__)
@@ -140,7 +141,7 @@ TIER_PRESUPUESTO_FACTORES: dict[str, dict[str, float]] = {
 def calcular_presupuesto_minimo(
     origen: str, destino: str, noches: int, pasajeros: int,
     incluir_hotel: bool = True, incluir_vehiculo: bool = False,
-    tier: str = "estandar",
+    tier: str = "estandar", medio_transporte: str = "avion",
 ) -> dict:
     """
     Calcula un presupuesto mínimo y máximo sugerido basado en precios de
@@ -162,6 +163,8 @@ def calcular_presupuesto_minimo(
         incluir_hotel: Si incluir hotel en el cálculo
         incluir_vehiculo: Si incluir vehículo en el cálculo
         tier: Nivel de calidad ('economico', 'estandar', 'premium')
+        medio_transporte: 'avion', 'bus' o 'tren'; con bus/tren viable el
+            mínimo de transporte se estima por distancia (más barato)
 
     Returns:
         Dict con presupuesto_minimo_sugerido, presupuesto_maximo_sugerido y desglose
@@ -170,7 +173,13 @@ def calcular_presupuesto_minimo(
 
     factores = TIER_PRESUPUESTO_FACTORES.get(tier, TIER_PRESUPUESTO_FACTORES["estandar"])
 
-    vuelo_min = _precio_vuelo_minimo(destino) * pasajeros * factores["vuelo"]
+    # Con bus/tren la ruta debe ser viable; si no lo es, el plan degradará a
+    # avión, así que el mínimo también se calcula con precio de avión
+    if medio_transporte in MEDIOS_TERRESTRES and ruta_viable(medio_transporte, origen, destino)[0]:
+        transporte_min = precio_transporte_minimo(medio_transporte, origen, destino)
+    else:
+        transporte_min = _precio_vuelo_minimo(destino)
+    vuelo_min = transporte_min * pasajeros * factores["vuelo"]
 
     hotel_min = 0
     if incluir_hotel:
@@ -439,6 +448,7 @@ async def generar_plan(
     tier:            str = "estandar",
     modo:            str = "exacto",
     duracion_dias:   int = 7,
+    medio_transporte: str = "avion",
 ) -> dict:
     """
     Genera un plan de viaje optimizado para el presupuesto dado.
@@ -465,6 +475,8 @@ async def generar_plan(
         tier: Nivel de calidad ('economico', 'estandar', 'premium')
         modo: 'exacto' (fechas fijas) o 'flexible' (busca mejor precio en el mes)
         duracion_dias: Dias de estadia para modo flexible
+        medio_transporte: 'avion', 'bus' o 'tren'. Con bus/tren la ruta debe
+            ser viable por distancia; si no lo es, degrada a avión con aviso
 
     Returns:
         Dict con plan_optimo, alternativas, hoteles, coches y avisos
@@ -474,6 +486,25 @@ async def generar_plan(
 
     # Obtener configuración del tier
     cfg = TIER_CONFIG.get(tier, TIER_CONFIG["estandar"])
+
+    # Verificar viabilidad del medio terrestre elegido; si la ruta no es
+    # viable (o no hay coords), degradar a avión con aviso en vez de fallar
+    medio_efectivo = medio_transporte if medio_transporte in MEDIOS_TERRESTRES else "avion"
+    aviso_degradacion = None
+    if medio_efectivo != "avion":
+        viable, km = ruta_viable(medio_efectivo, origen, destino)
+        if not viable:
+            if km is not None:
+                aviso_degradacion = (
+                    f"La ruta {origen.upper()}→{destino.upper()} (~{km:.0f} km) "
+                    f"no es viable en {medio_efectivo}; te mostramos opciones en avión."
+                )
+            else:
+                aviso_degradacion = (
+                    f"No pudimos verificar la ruta terrestre {origen.upper()}→{destino.upper()}; "
+                    f"te mostramos opciones en avión."
+                )
+            medio_efectivo = "avion"
 
     # Convertir IATA a nombre de ciudad para hoteles
     ciudad_destino = await _resolver_ciudad_destino(destino)
@@ -498,7 +529,15 @@ async def generar_plan(
     # 1-2. Buscar vuelos, hoteles y coches.
     # En modo flexible las fechas definitivas dependen del resultado de vuelos,
     # así que hoteles/coches se lanzan después; en modo exacto todo va en paralelo.
-    if modo == "flexible":
+    # El transporte terrestre se estima por distancia y no varía por fecha,
+    # así que usa las fechas dadas incluso en modo flexible.
+    if medio_efectivo in MEDIOS_TERRESTRES:
+        resultado_vuelos, resultado_hoteles, resultado_coches = await asyncio.gather(
+            buscar_transporte(medio_efectivo, origen, destino, fecha_salida, fecha_regreso, pasajeros),
+            _tarea_hoteles(fecha_salida, fecha_regreso),
+            _tarea_coches(fecha_salida, fecha_regreso),
+        )
+    elif modo == "flexible":
         resultado_vuelos, fecha_salida, fecha_regreso = await _vuelos_flexibles(
             origen, destino, fecha_salida, fecha_regreso, pasajeros, duracion_dias
         )
@@ -514,8 +553,9 @@ async def generar_plan(
             _tarea_coches(fecha_salida, fecha_regreso),
         )
 
-    # Extraer datos de los resultados
-    vuelos       = resultado_vuelos.get("vuelos", [])
+    # Extraer datos de los resultados (el transporte terrestre devuelve
+    # "opciones" con el mismo contrato que los vuelos)
+    vuelos       = resultado_vuelos.get("vuelos") or resultado_vuelos.get("opciones") or []
     vuelo_prec   = resultado_vuelos.get("precision", "sin_resultados")
     hotel_prec   = resultado_hoteles.get("precision", "exacta") if isinstance(resultado_hoteles, dict) else "exacta"
     # Los hoteles reportan "real" (precios reales de Hotels.nl); para la
@@ -549,6 +589,11 @@ async def generar_plan(
 
     # Si no hay vuelos, devolver respuesta vacía
     if not vuelos:
+        sin_resultados = (
+            "No se encontraron vuelos para esta ruta."
+            if medio_efectivo == "avion"
+            else f"No se encontraron opciones de {medio_efectivo} para esta ruta."
+        )
         return {
             "origen":         origen.upper(),
             "destino":        destino.upper(),
@@ -558,11 +603,12 @@ async def generar_plan(
             "pasajeros":      pasajeros,
             "noches":         noches,
             "presupuesto":    presupuesto,
+            "medio_transporte": medio_efectivo,
             "plan_optimo":    None,
             "alternativas":   [],
             "hoteles":        hoteles_lista,
             "coches":         resultado_coches,
-            "aviso":          aviso_vuelos or "No se encontraron vuelos para esta ruta.",
+            "aviso":          aviso_vuelos or sin_resultados,
             "precision":      precision,
             "clima":          None,
             "actividades":    None,
@@ -610,9 +656,14 @@ async def generar_plan(
         if aviso_vuelos:
             aviso = aviso_vuelos + " " + aviso
 
-    # 7. Buscar aeropuertos alternativos cercanos al destino (en paralelo)
+    # Prefijar el aviso de degradación bus/tren→avión si aplica
+    if aviso_degradacion:
+        aviso = f"{aviso_degradacion} {aviso}" if aviso else aviso_degradacion
+
+    # 7. Buscar aeropuertos alternativos cercanos al destino (en paralelo).
+    # El concepto no aplica al transporte terrestre.
     alternativas_aeropuerto = []
-    cercanos = aeropuertos_alternativos(destino)
+    cercanos = aeropuertos_alternativos(destino) if medio_efectivo == "avion" else []
     if cercanos:
         async def _vuelo_alternativo(alt: str) -> dict | None:
             try:
@@ -637,6 +688,7 @@ async def generar_plan(
         origen=origen, destino=destino, noches=noches,
         pasajeros=pasajeros, incluir_hotel=incluir_hotel,
         incluir_vehiculo=incluir_vehiculo, tier=tier,
+        medio_transporte=medio_efectivo,
     )
 
     # 8. Clima y actividades del destino, en paralelo (no bloquean el plan si fallan)
@@ -661,6 +713,7 @@ async def generar_plan(
         "pasajeros":      pasajeros,
         "noches":         noches,
         "presupuesto":    presupuesto,
+        "medio_transporte": medio_efectivo,
         "presupuesto_minimo_sugerido": presupuesto_minimo["presupuesto_minimo_sugerido"],
         "presupuesto_maximo_sugerido": presupuesto_minimo["presupuesto_maximo_sugerido"],
         "plan_optimo":    plan_optimo,
