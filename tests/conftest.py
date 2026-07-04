@@ -38,6 +38,23 @@ def temp_dbs(tmp_path, monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def osm_offline(monkeypatch):
+    """
+    Evita que la verificación de rutas (OSRM/Overpass) toque la red en tests:
+    por defecto las llamadas fallan y el servicio cae al heurístico por
+    distancia. Los tests que necesiten respuestas OSM concretas re-parchean
+    services.transport.request_with_retry localmente.
+    """
+    import services.transport as transport
+    from core.errors import ExternalAPIError
+
+    async def _sin_red(*args, **kwargs):
+        raise ExternalAPIError("OSM deshabilitado en tests")
+
+    monkeypatch.setattr(transport, "request_with_retry", _sin_red, raising=False)
+
+
 class FakeResponse:
     """Respuesta HTTP falsa para mockear request_with_retry / http_client."""
 
