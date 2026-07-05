@@ -221,12 +221,17 @@ async def test_enriquecer_poi_opentripmap(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_traducir_descripciones_sin_key_devuelve_original():
+async def test_traducir_descripciones_sin_key_reemplaza_por_plantilla_espanol():
     from services.activities import _traducir_descripciones
 
+    # Sin key de DeepL, los textos en inglés se reemplazan por plantillas en
+    # español para evitar mostrar descripciones en idiomas extranjeros.
     textos = ["A great museum.", "A nice park."]
-    resultado = await _traducir_descripciones(textos)
-    assert resultado == textos
+    categorias = ["Museo", "Parque / Naturaleza"]
+    ciudades = ["Madrid", "Madrid"]
+    resultado = await _traducir_descripciones(textos, categorias=categorias, ciudades=ciudades)
+    assert resultado[0] == "Uno de los museos más destacados de Madrid."
+    assert resultado[1] == "Un espacio verde ideal para pasear en Madrid."
 
 
 @pytest.mark.asyncio
@@ -310,8 +315,8 @@ async def test_consultar_opentripmap_enriquece_descripcion_y_foto(monkeypatch):
     assert act["nombre"] == "Museo del Test"
     assert "foto_url" in act
     assert act["foto_url"] == "https://example.com/test.jpg"
-    # Descripción enriquecida (sin DeepL key queda en inglés)
-    assert "english" in act["descripcion"].lower()
+    # Sin DeepL key, el texto en inglés se reemplaza por plantilla en español
+    assert "museos" in act["descripcion"].lower()
 
 
 @pytest.mark.asyncio

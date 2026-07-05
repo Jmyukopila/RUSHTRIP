@@ -6,10 +6,13 @@
 # presupuesto del plan porque la reserva y el pago se realizan en sitios externos.
 
 import asyncio
+import hashlib
 import logging
+import re
 import unicodedata
 from datetime import datetime, timedelta
 from statistics import mean
+from urllib.parse import urlparse
 
 from core.config import settings
 from core.database_cache import cache_get, cache_get_stale, cache_set
@@ -23,6 +26,21 @@ _RADIUS_URL = "https://api.opentripmap.com/0.1/en/places/radius"
 
 # TTL de cache: los puntos de interés de una ciudad son estables
 _TTL_ACTIVIDADES = 7 * 24 * 3600
+
+# Hosts de imágenes que consideramos confiables para usar sin validar HEAD.
+# OpenTripMap devuelve muchas URLs de media.opentripmap.org/catalog que 404 o
+# están protegidas; las descartamos y usamos Pexels como fallback.
+_HOSTS_IMAGEN_CONFIABLE: set[str] = {
+    "images.pexels.com",
+    "images.pexels.com",
+    "cdn.pixabay.com",
+    "upload.wikimedia.org",
+    "live.staticflickr.com",
+    "cdn.worldota.net",
+    "cf.bstatic.com",
+    "www.kayak.com",
+    "img.kayak.com",
+}
 
 # Radio de búsqueda alrededor del centro de la ciudad (metros)
 _RADIO_M = 12000
@@ -850,21 +868,58 @@ async def _fotos_pexels(ciudad: str, limite: int = 12) -> list[str]:
         return []
 
 
-async def _traducir_descripciones(textos: list[str]) -> list[str]:
+def _parece_espanol(texto: str) -> bool:
+    """Heurística simple: si hay caracteres propios del español, lo damos por español."""
+    if not texto:
+        return False
+    lowered = texto.lower()
+    marcas = {"á", "é", "í", "ó", "ú", "ü", "ñ", "¿", "¡"}
+    return any(c in lowered for c in marcas)
+
+
+def _cache_key_traduccion(textos: list[str]) -> str:
+    """Hash determinista de la lista de textos; estable entre reinicios."""
+    blob = "\x00".join(t.strip() for t in textos)
+    digest = hashlib.sha1(blob.encode("utf-8")).hexdigest()
+    return f"deepl:{digest}"
+
+
+async def _traducir_descripciones(
+    textos: list[str],
+    categorias: list[str] | None = None,
+    ciudades: list[str] | None = None,
+) -> list[str]:
     """
     Traduce una lista de textos al español vía DeepL API Free.
     Si no hay key, la API falla o no hay textos, devuelve los originales.
     Se cachea la traducción completa como un solo bloque.
+
+    Si DeepL falla, los textos que no parezcan español se reemplazan por una
+    plantilla en español (usando la categoría y ciudad si se proveen) para
+    evitar mostrar italiano, griego, etc.
     """
-    if not textos or not settings.deepl_api_key:
+    if not textos:
         return textos
 
+    categorias = categorias or ["Atracción"] * len(textos)
+    ciudades = ciudades or [""] * len(textos)
+
+    # Sin key de DeepL: cualquier texto no español se pisa por plantilla española.
+    if not settings.deepl_api_key:
+        return [
+            t if _parece_espanol(t) else _descripcion_por_categoria(categorias[i], ciudades[i])
+            for i, t in enumerate(textos)
+        ]
+
     # Normalizar: ignorar vacíos y plantillas (que ya están en español)
-    indices_a_traducir = [i for i, t in enumerate(textos) if t and len(t.strip()) > 5]
+    indices_a_traducir = [
+        i for i, t in enumerate(textos)
+        if t and len(t.strip()) > 5 and not _parece_espanol(t)
+    ]
     if not indices_a_traducir:
         return textos
 
-    cache_key = f"deepl:{hash(tuple(textos))}"
+    cache_key = _cache_key_traduccion(textos)
     cached = cache_get(cache_key)
     if cached and isinstance(cached, list) and len(cached) == len(textos):
         return cached
@@ -873,6 +928,7 @@ async def _traducir_descripciones(textos: list[str]) -> list[str]:
         payload = {
             "auth_key": settings.deepl_api_key,
             "target_lang": "ES",
+            "source_lang": "EN",
         }
         for i in indices_a_traducir:
             payload.setdefault("text", []).append(textos[i])
@@ -884,7 +940,12 @@ async def _traducir_descripciones(textos: list[str]) -> list[str]:
             data=payload,
         )
         data = resp.json()
-        traducciones = [t.get("text", "") for t in data.get("translations", [])]
+        # DeepL Free devuelve {'translations': [...]}; algunos proxies/tests
+        # pueden devolver la lista directamente.
+        if isinstance(data, list):
+            traducciones = [t.get("text", "") if isinstance(t, dict) else str(t) for t in data]
+        else:
+            traducciones = [t.get("text", "") for t in data.get("translations", [])]
 
         resultado = list(textos)
         for idx, trad in zip(indices_a_traducir, traducciones):
@@ -895,13 +956,89 @@ async def _traducir_descripciones(textos: list[str]) -> list[str]:
         return resultado
     except Exception as e:
         logger.warning(f"DeepL no pudo traducir descripciones: {e}")
-        return textos
+        return [
+            t if _parece_espanol(t) else _descripcion_por_categoria(categorias[i], ciudades[i])
+            for i, t in enumerate(textos)
+        ]
+
+
+def _extraer_descripcion_poi(data: dict) -> str:
+    """Extrae la mejor descripción disponible del detalle de OpenTripMap."""
+    wiki = data.get("wikipedia_extracts") or {}
+    descripcion = (wiki.get("text") or "").strip()
+    if not descripcion:
+        info = data.get("info") or {}
+        descripcion = (info.get("descr") or "").strip()
+    return descripcion
+
+
+async def _detalle_poi_opentripmap(xid: str, language: str) -> dict:
+    """Consulta /places/xid con un idioma específico."""
+    url = _DETALLE_URL.format(xid=xid)
+    resp = await request_with_retry(
+        "GET", url,
+        provider="opentripmap",
+        max_retries=1,
+        params={
+            "apikey": settings.opentripmap_api_key,
+            "language": language,
+        },
+    )
+    return resp.json()
+
+
+_EXTENSIONES_IMAGEN = re.compile(r"\.(jpg|jpeg|png|webp|gif|bmp)(\?.*)?$", re.IGNORECASE)
+
+
+def _url_imagen_confiable(url: str) -> str:
+    """
+    Devuelve la URL si consideramos que puede cargarse como imagen; si no, vacío.
+
+    Descartamos explícitamente las URLs del catálogo de OpenTripMap, que suelen
+    estar rotas o protegidas. El resto se acepta si termina en extensión de imagen
+    conocida o proviene de un host en la lista blanca.
+    """
+    if not url:
+        return ""
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        return ""
+
+    lowered = url.lower()
+    if "opentripmap.org/catalog" in lowered or "otmap.org/catalog" in lowered:
+        return ""
+
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return ""
+    host = host.lower().lstrip("www.")
+
+    if _EXTENSIONES_IMAGEN.search(url):
+        return url
+
+    if any(
+        host == confiable or host.endswith("." + confiable.split(".", 1)[-1])
+        for confiable in _HOSTS_IMAGEN_CONFIABLE
+    ):
+        return url
+
+    return ""
 
 
 async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
     """
     Consulta el detalle de un POI por su XID y devuelve un dict con
     descripción (preferentemente en español) y foto_url.
+
+    Estrategia de idioma:
+      1. Pedir language=es (extracto de Wikipedia en español si existe).
+      2. Si no trae descripción, reintentar language=en.
+      3. Si aún así llega un texto que no parece español, _traducir_descripciones
+         se encargará de traducirlo o reemplazarlo por plantilla en español.
+
+    La foto se valida contra hosts confiables para evitar URLs rotas de
+    media.opentripmap.org/catalog.
     """
     if not xid:
         return {"descripcion": "", "foto_url": ""}
@@ -912,25 +1049,18 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
         return cached
 
     try:
-        url = _DETALLE_URL.format(xid=xid)
-        resp = await request_with_retry(
-            "GET", url,
-            provider="opentripmap",
-            max_retries=1,
-            params={"apikey": settings.opentripmap_api_key},
-        )
-        data = resp.json()
+        # 1) Intento en español
+        data = await _detalle_poi_opentripmap(xid, language="es")
+        descripcion = _extraer_descripcion_poi(data)
 
-        descripcion = ""
-        # Preferir extracto de Wikipedia
-        wiki = data.get("wikipedia_extracts") or {}
-        descripcion = (wiki.get("text") or "").strip()
-        # Fallback a info.descr
+        # 2) Fallback a inglés si no hubo descripción
         if not descripcion:
-            info = data.get("info") or {}
-            descripcion = (info.get("descr") or "").strip()
+            data = await _detalle_poi_opentripmap(xid, language="en")
+            descripcion = _extraer_descripcion_poi(data)
 
-        foto_url = data.get("image") or data.get("preview", {}).get("source") or ""
+        foto_url = _url_imagen_confiable(
+            data.get("image") or data.get("preview", {}).get("source") or ""
+        )
 
         resultado = {"descripcion": descripcion, "foto_url": foto_url or ""}
         cache_set(cache_key, resultado, provider="opentripmap", ttl_seconds=_TTL_DETALLE)
@@ -1011,7 +1141,10 @@ async def _consultar_opentripmap(
 
     # 3) Traducir descripciones reales al español (si hay DeepL key)
     textos_originales = [d.get("descripcion", "") for d in detalles]
-    textos_traducidos = await _traducir_descripciones(textos_originales)
+    categorias = [_clasificar_kinds(poi.get("kinds", ""))[0] for poi in pois_base]
+    textos_traducidos = await _traducir_descripciones(
+        textos_originales, categorias=categorias, ciudades=[ciudad] * len(pois_base)
+    )
 
     # 4) Fotos de fallback (proporcionadas por el caller para evitar doble llamada)
     fotos_pexels = fotos_pexels or []
@@ -1024,7 +1157,7 @@ async def _consultar_opentripmap(
         detalle = detalles[i]
         descripcion_raw = textos_traducidos[i] or detalle.get("descripcion", "")
 
-        # Si no hay descripción real, usar plantilla en español
+        # Si no hay descripción real o es sospechosamente corta, usar plantilla en español
         if not descripcion_raw or len(descripcion_raw) < 10:
             descripcion = _descripcion_por_categoria(categoria, ciudad)
         else:

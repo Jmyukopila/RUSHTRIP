@@ -36,7 +36,8 @@ function formatMoney(n) {
 
 function ActivityCard({ act, delay }) {
   const ActIcon = ACTIVITY_ICON_MAP[act.categoria] || IconPin;
-  const hasFoto = act.foto_url && act.foto_url.startsWith('http');
+  const hasFotoProp = act.foto_url && act.foto_url.startsWith('http');
+  const [showFoto, setShowFoto] = useState(hasFotoProp);
 
   return (
     <div
@@ -48,14 +49,12 @@ function ActivityCard({ act, delay }) {
     >
       {/* Imagen / fallback */}
       <div className="h-32 bg-accent2/10 relative overflow-hidden">
-        {hasFoto ? (
+        {showFoto ? (
           <img
             src={act.foto_url}
             alt={act.nombre}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            onError={() => setShowFoto(false)}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-accent2/60">

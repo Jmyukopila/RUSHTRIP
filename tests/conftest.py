@@ -16,6 +16,9 @@ os.environ["SMTP_HOST"] = ""
 os.environ["SMTP_USER"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 os.environ["DEBUG"] = "true"
+os.environ["OPENTRIPMAP_API_KEY"] = ""
+os.environ["DEEPL_API_KEY"] = ""
+os.environ["PEXELS_API_KEY"] = ""
 
 # Asegura que la raíz del repo esté en sys.path para importar core/, services/, main
 ROOT = Path(__file__).resolve().parent.parent
