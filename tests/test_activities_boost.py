@@ -234,6 +234,30 @@ async def test_traducir_descripciones_sin_key_reemplaza_por_plantilla_espanol():
     assert resultado[1] == "Un espacio verde ideal para pasear en Madrid."
 
 
+def test_parece_espanol_evita_falsos_positivos_con_nombres_propios():
+    """Regresión: un texto en inglés que mencione nombres con tilde no debe
+    pasar como español, porque entonces nunca se enviaría a DeepL."""
+    from services.activities import _parece_espanol
+
+    # Inglés con nombres propios acentuados (el caso del usuario).
+    assert _parece_espanol(
+        "The museum is one of the most visited in Málaga and showcases art from Spain."
+    ) is False
+
+    # Inglés puro.
+    assert _parece_espanol(
+        "The museum is one of the most visited in the city and showcases lots of art."
+    ) is False
+
+    # Español real (con y sin tildes).
+    assert _parece_espanol(
+        "El museo es uno de los más visitados de la ciudad."
+    ) is True
+    assert _parece_espanol(
+        "El museo es uno de los mas visitados de la ciudad."
+    ) is True
+
+
 @pytest.mark.asyncio
 async def test_traducir_descripciones_con_deepl(monkeypatch):
     from services.activities import _traducir_descripciones
@@ -259,6 +283,39 @@ async def test_traducir_descripciones_con_deepl(monkeypatch):
     textos = ["A great museum.", "A nice park."]
     resultado = await _traducir_descripciones(textos)
     assert resultado == ["Un gran museo.", "Un bonito parque."]
+
+
+@pytest.mark.asyncio
+async def test_traducir_descripciones_con_deepl_manda_ingles_con_nombres_propios(monkeypatch):
+    """Regresión: un extracto en inglés con nombres acentuados debe llegar a DeepL."""
+    from services.activities import _traducir_descripciones
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "deepl_api_key", "fake-deepl-key")
+
+    textos = ["The museum is one of the most visited in Málaga and Spain."]
+    recibidos = []
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {
+                "translations": [
+                    {"text": "El museo es uno de los más visitados de Málaga y España."},
+                ]
+            }
+
+    async def fake_request(*args, **kwargs):
+        data = kwargs.get("data") or {}
+        recibidos.extend(data.get("text", []))
+        return FakeResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    resultado = await _traducir_descripciones(textos)
+
+    assert textos[0] in recibidos
+    assert resultado[0] == "El museo es uno de los más visitados de Málaga y España."
 
 
 @pytest.mark.asyncio

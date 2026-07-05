@@ -868,20 +868,63 @@ async def _fotos_pexels(ciudad: str, limite: int = 12) -> list[str]:
         return []
 
 
+_STOP_WORDS_EN: set[str] = {
+    "the", "and", "of", "in", "is", "are", "was", "were", "with", "to",
+    "from", "by", "on", "at", "for", "a", "an", "this", "that", "it",
+    "you", "he", "she", "we", "they", "be", "been", "being", "have",
+    "has", "had", "do", "does", "did", "will", "would", "could", "should",
+}
+
+_STOP_WORDS_ES: set[str] = {
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "de",
+    "del", "que", "con", "por", "para", "es", "son", "en", "al", "su",
+    "sus", "lo", "le", "se", "me", "te", "nos", "más", "como", "pero",
+    "sino", "si", "no", "sí", "ya", "todo", "todos", "toda", "todas",
+}
+
+_MARCAS_ES: set[str] = {"á", "é", "í", "ó", "ú", "ü", "ñ", "¿", "¡"}
+
+
 def _parece_espanol(texto: str) -> bool:
-    """Heurística simple: si hay caracteres propios del español, lo damos por español."""
+    """
+    Heurística robusta para decidir si un texto está en español.
+
+    Un texto en inglés que mencione nombres propios acentuados (p.ej.
+    "museum in Málaga") daba falsos positivos con la heurística anterior.
+    Ahora exigimos señales más fuertes:
+      - densidad de marcas españolas (>= 2), O
+      - presencia de stop-words españolas, O
+      - ausencia total de stop-words inglesas con al menos 1 marca española.
+    Si aparecen stop-words inglesas frecuentes, descartamos que sea español.
+    """
     if not texto:
         return False
+
     lowered = texto.lower()
-    marcas = {"á", "é", "í", "ó", "ú", "ü", "ñ", "¿", "¡"}
-    return any(c in lowered for c in marcas)
+    palabras = set(re.findall(r"\b[a-zñáéíóúü]+\b", lowered))
+
+    # Si hay stop-words inglesas claras, no es español (evita falsos positivos
+    # como "The museum is one of the most visited in Málaga").
+    if palabras.intersection(_STOP_WORDS_EN):
+        return False
+
+    marcas = sum(1 for c in lowered if c in _MARCAS_ES)
+    if marcas >= 2:
+        return True
+
+    if palabras.intersection(_STOP_WORDS_ES):
+        return True
+
+    # Caso sin stop-words identificables pero con al menos una marca: damos el
+    # beneficio de la duda (nombres propios o frases muy cortas).
+    return marcas >= 1
 
 
 def _cache_key_traduccion(textos: list[str]) -> str:
     """Hash determinista de la lista de textos; estable entre reinicios."""
     blob = "\x00".join(t.strip() for t in textos)
     digest = hashlib.sha1(blob.encode("utf-8")).hexdigest()
-    return f"deepl:{digest}"
+    return f"deepl:v2:{digest}"
 
 
 async def _traducir_descripciones(
@@ -928,7 +971,7 @@ async def _traducir_descripciones(
         payload = {
             "auth_key": settings.deepl_api_key,
             "target_lang": "ES",
-            "source_lang": "EN",
+            # No forzamos source_lang: DeepL auto-detecta (es, en, it, el, etc.).
         }
         for i in indices_a_traducir:
             payload.setdefault("text", []).append(textos[i])
