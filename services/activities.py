@@ -12,7 +12,7 @@ import re
 import unicodedata
 from datetime import datetime, timedelta
 from statistics import mean
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from core.config import settings
 from core.database_cache import cache_get, cache_get_stale, cache_set
@@ -558,14 +558,25 @@ def _normalizar(texto: str) -> str:
     return sin_acentos.strip().lower()
 
 
-def _links_afiliado(ciudad: str) -> dict:
-    """Links de afiliado Klook/KKday para reservar actividades en la ciudad."""
-    destino = ciudad.lower().replace(" ", "-")
-    link_klook = f"https://klook.tpo.li/GBfSCVf0?dest={destino}"
+def _links_afiliado(nombre: str, ciudad: str) -> dict:
+    """
+    Links de afiliado Klook/KKday que buscan la actividad por nombre.
+
+    Usamos el patrón `?u=<url_de_busqueda>` sobre los redirects de afiliado
+    (similar a Travelpayouts), de modo que el usuario llegue a una página de
+    resultados de la actividad concreta, no al homepage de la plataforma.
+    """
+    query = quote(nombre.strip())
+
+    base_klook = f"https://www.klook.com/search/?keyword={query}"
+    link_klook = f"https://klook.tpo.li/GBfSCVf0?u={quote(base_klook)}"
+
+    base_kkday = f"https://www.kkday.com/en/search?keyword={query}"
+    link_kkday = f"https://kkday.tpo.li/zHk5IFqZ?u={quote(base_kkday)}"
+
     return {
-        "link_reserva": link_klook,
-        "link_klook":   link_klook,
-        "link_kkday":   f"https://kkday.tpo.li/zHk5IFqZ?dest={destino}",
+        "link_klook": link_klook,
+        "link_kkday": link_kkday,
     }
 
 
@@ -603,7 +614,7 @@ def _armar_actividad(
         "gratis":          precio == 0,
         "moneda":          "USD",
         "fuente":          fuente,
-        **_links_afiliado(ciudad),
+        **_links_afiliado(nombre, ciudad),
     }
 
 
@@ -882,6 +893,21 @@ _STOP_WORDS_ES: set[str] = {
     "sino", "si", "no", "sí", "ya", "todo", "todos", "toda", "todas",
 }
 
+# Palabras funcionales frecuentes en francés e italiano. Las usamos para
+# descartar esos idiomas en el fallback (path sin key / DeepL falló), ya que
+# comparten acentos y algunas stop-words con el español.
+_STOP_WORDS_FR: set[str] = {
+    "est", "une", "avec", "dans", "pour", "sur", "où", "mais", "les",
+    "des", "par", "pas", "ne", "nous", "vous", "ce", "cette", "ces",
+    "tout", "tous", "qui", "que", "quoi", "son", "sa", "ses", "leur",
+    "leurs", "notre", "votre", "mon", "ton", "du", "au", "aux", "en",
+}
+_STOP_WORDS_IT: set[str] = {
+    "è", "sono", "questo", "questa", "questi", "queste", "gli", "con",
+    "per", "che", "chi", "cioè", "tutto", "tutti", "tutte", "ogni",
+    "molto", "più", "dopo", "fare", "dalla", "dallo", "dalle", "degli",
+}
+
 _MARCAS_ES: set[str] = {"á", "é", "í", "ó", "ú", "ü", "ñ", "¿", "¡"}
 
 
@@ -889,13 +915,10 @@ def _parece_espanol(texto: str) -> bool:
     """
     Heurística robusta para decidir si un texto está en español.
 
-    Un texto en inglés que mencione nombres propios acentuados (p.ej.
-    "museum in Málaga") daba falsos positivos con la heurística anterior.
-    Ahora exigimos señales más fuertes:
-      - densidad de marcas españolas (>= 2), O
-      - presencia de stop-words españolas, O
-      - ausencia total de stop-words inglesas con al menos 1 marca española.
-    Si aparecen stop-words inglesas frecuentes, descartamos que sea español.
+    Se usa principalmente en los paths de fallback (sin key de DeepL o cuando
+    DeepL falla). En el path normal con DeepL ya no se usa para saltar la
+    traducción, porque el francés/italiano comparten acentos con el español y
+    provocaban falsos positivos.
     """
     if not texto:
         return False
@@ -903,9 +926,8 @@ def _parece_espanol(texto: str) -> bool:
     lowered = texto.lower()
     palabras = set(re.findall(r"\b[a-zñáéíóúü]+\b", lowered))
 
-    # Si hay stop-words inglesas claras, no es español (evita falsos positivos
-    # como "The museum is one of the most visited in Málaga").
-    if palabras.intersection(_STOP_WORDS_EN):
+    # Stop-words de otros idiomas romances / inglés descartan español.
+    if palabras.intersection(_STOP_WORDS_EN | _STOP_WORDS_FR | _STOP_WORDS_IT):
         return False
 
     marcas = sum(1 for c in lowered if c in _MARCAS_ES)
@@ -915,8 +937,6 @@ def _parece_espanol(texto: str) -> bool:
     if palabras.intersection(_STOP_WORDS_ES):
         return True
 
-    # Caso sin stop-words identificables pero con al menos una marca: damos el
-    # beneficio de la duda (nombres propios o frases muy cortas).
     return marcas >= 1
 
 
@@ -924,7 +944,7 @@ def _cache_key_traduccion(textos: list[str]) -> str:
     """Hash determinista de la lista de textos; estable entre reinicios."""
     blob = "\x00".join(t.strip() for t in textos)
     digest = hashlib.sha1(blob.encode("utf-8")).hexdigest()
-    return f"deepl:v2:{digest}"
+    return f"deepl:v3:{digest}"
 
 
 async def _traducir_descripciones(
@@ -954,11 +974,11 @@ async def _traducir_descripciones(
             for i, t in enumerate(textos)
         ]
 
-    # Normalizar: ignorar vacíos y plantillas (que ya están en español)
-    indices_a_traducir = [
-        i for i, t in enumerate(textos)
-        if t and len(t.strip()) > 5 and not _parece_espanol(t)
-    ]
+    # Cuando hay key de DeepL, enviamos todos los textos >5 chars a traducir.
+    # DeepL auto-detecta el idioma de origen (inglés, francés, italiano, griego,
+    # etc.). Antes filtrábamos por _parece_espanol, pero el francés/italiano
+    # comparten acentos con el español y provocaban textos no traducidos.
+    indices_a_traducir = [i for i, t in enumerate(textos) if t and len(t.strip()) > 5]
     if not indices_a_traducir:
         return textos
 
@@ -971,7 +991,7 @@ async def _traducir_descripciones(
         payload = {
             "auth_key": settings.deepl_api_key,
             "target_lang": "ES",
-            # No forzamos source_lang: DeepL auto-detecta (es, en, it, el, etc.).
+            # No forzamos source_lang: DeepL auto-detecta el idioma de origen.
         }
         for i in indices_a_traducir:
             payload.setdefault("text", []).append(textos[i])
@@ -994,6 +1014,13 @@ async def _traducir_descripciones(
         for idx, trad in zip(indices_a_traducir, traducciones):
             if trad:
                 resultado[idx] = trad
+
+        # Si DeepL respondió 200 pero no tradujo algún texto (cuota excedida,
+        # idioma no soportado, contenido filtrado, respuesta truncada), el idx
+        # sigue con el texto original. Lo reemplazamos por plantilla en español.
+        for idx in indices_a_traducir:
+            if resultado[idx] == textos[idx] and not _parece_espanol(resultado[idx]):
+                resultado[idx] = _descripcion_por_categoria(categorias[idx], ciudades[idx])
 
         cache_set(cache_key, resultado, provider="deepl", ttl_seconds=_TTL_TRADUCCION)
         return resultado
@@ -1200,8 +1227,10 @@ async def _consultar_opentripmap(
         detalle = detalles[i]
         descripcion_raw = textos_traducidos[i] or detalle.get("descripcion", "")
 
-        # Si no hay descripción real o es sospechosamente corta, usar plantilla en español
-        if not descripcion_raw or len(descripcion_raw) < 10:
+        # Si no hay descripción real o es sospechosamente corta, usar plantilla en español.
+        # Como safety net, si después de todo el pipeline sigue sin parecer español,
+        # pisamos por la plantilla para nunca mostrar inglés/francés/italiano al usuario.
+        if not descripcion_raw or len(descripcion_raw) < 10 or not _parece_espanol(descripcion_raw):
             descripcion = _descripcion_por_categoria(categoria, ciudad)
         else:
             descripcion = descripcion_raw

@@ -319,6 +319,45 @@ async def test_traducir_descripciones_con_deepl_manda_ingles_con_nombres_propios
 
 
 @pytest.mark.asyncio
+async def test_traducir_descripciones_con_deepl_falla_silenciosamente(monkeypatch):
+    """Regresión: DeepL responde 200 pero sin traducción para un texto.
+
+    Antes el texto original (inglés/francés) se quedaba tal cual. Ahora debe
+    caer a la plantilla en español.
+    """
+    from services.activities import _traducir_descripciones
+    from core.config import settings
+
+    monkeypatch.setattr(settings, "deepl_api_key", "fake-deepl-key")
+
+    textos = ["Le musée est l'un des plus visités de la ville."]
+    categorias = ["Museo"]
+    ciudades = ["París"]
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            # DeepL responde sin traducciones (lista vacía).
+            return {"translations": []}
+
+    async def fake_request(*args, **kwargs):
+        return FakeResp()
+
+    monkeypatch.setattr("services.activities.request_with_retry", fake_request)
+
+    resultado = await _traducir_descripciones(textos, categorias=categorias, ciudades=ciudades)
+
+    assert resultado[0] == "Uno de los museos más destacados de París."
+
+
+def test_parece_espanol_no_confunde_frances_ni_italiano():
+    from services.activities import _parece_espanol
+
+    assert _parece_espanol("Le musée est l'un des plus visités de la ville.") is False
+    assert _parece_espanol("Il museo è uno dei più visitati della città.") is False
+
+
+@pytest.mark.asyncio
 async def test_consultar_opentripmap_enriquece_descripcion_y_foto(monkeypatch):
     from services.activities import _consultar_opentripmap
 

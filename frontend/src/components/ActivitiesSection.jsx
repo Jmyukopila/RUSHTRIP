@@ -82,23 +82,29 @@ function ActivityCard({ act, delay }) {
               <span className="text-xs text-muted-300"> aprox./persona</span>
             </p>
           )}
-          <div className="flex gap-2 shrink-0">
-            <a
-              href={act.link_klook}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary text-xs py-1.5 px-3"
-            >
-              Reservar →
-            </a>
-            <a
-              href={act.link_kkday}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-outline text-xs py-1.5 px-3"
-            >
-              KKday
-            </a>
+          <div className="flex gap-2 shrink-0 items-center">
+            {act.gratis ? (
+              <span className="text-xs text-muted-300">Visita libre</span>
+            ) : (
+              <>
+                <a
+                  href={act.link_klook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary text-xs py-1.5 px-3"
+                >
+                  Klook →
+                </a>
+                <a
+                  href={act.link_kkday}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-outline text-xs py-1.5 px-3"
+                >
+                  KKday →
+                </a>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -24,7 +24,7 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 - **Hoteles con fotos y precios reales** — Via Hotels.nl API (datos reales con fotos, precios, ratings). Fallback a precios estimados por destino si no hay API key configurada. Las fotos se complementan con Pexels.
 - **Alquiler de coches** — Via RapidAPI con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
 - **Clima del destino** — Pronóstico real día a día para los días exactos del viaje (Open-Meteo, sin API key). Para fechas a más de 16 días muestra el clima típico calculado con datos históricos reales de años anteriores.
-- **Mejores actividades del destino** — Puntos de interés reales ordenados por relevancia turística (OpenTripMap, key gratuita opcional) con categoría, precio orientativo y links de reserva via Klook/KKday. Sin key, muestra una selección curada por destino. Las actividades son recomendaciones informativas: no entran en el cálculo del presupuesto.
+- **Mejores actividades del destino** — Puntos de interés reales ordenados por relevancia turística (OpenTripMap, key gratuita opcional) con categoría, precio orientativo y links de búsqueda a Klook/KKday por nombre de actividad. Las actividades gratis (playas, miradores, templos, parques) muestran "Visita libre" en lugar de botones de reserva. Sin key, muestra una selección curada por destino. Las actividades son recomendaciones informativas: no entran en el cálculo del presupuesto.
 - **Comparativa por tiers** — Al ver los resultados, podés comparar opciones Económico, Estándar y Premium para elegir según tu presupuesto.
 - **Frontend responsive** — Interfaz moderna hecha en React + Tailwind con cards, badges, diseño limpio y animaciones suaves.
 
