@@ -51,6 +51,7 @@ def _init_db():
 LIMITS: dict[str, int] = {
     "plan": 30,
     "flights": 100,
+    "transport": 100,
     "hotels": 100,
     "cars": 100,
     # El autocomplete se dispara por tecleo del usuario: necesita margen amplio
@@ -61,7 +62,7 @@ LIMITS: dict[str, int] = {
     "default": 200,
 }
 
-_API_PREFIXES = ("/plan", "/flights", "/hotels", "/cars", "/airports", "/weather", "/activities", "/auth")
+_API_PREFIXES = ("/plan", "/flights", "/transport", "/hotels", "/cars", "/airports", "/weather", "/activities", "/auth")
 
 
 def normalizar_path(path: str) -> str:

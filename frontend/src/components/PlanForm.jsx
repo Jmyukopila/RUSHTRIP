@@ -4,7 +4,15 @@ import { getMinBudget } from '../api/client';
 import {
   IconWallet, IconStar, IconStarRow, IconCheckCircle, MetallicTierIcon, TIER_METAL,
   IconMapPin, IconCalendar, IconClock, IconUsers, IconHotel, IconCar, IconCheck, IconPlane,
+  TRANSPORT_ICONS, TRANSPORT_LABELS,
 } from './icons';
+
+// Medios de transporte del plan (el backend valida avion|bus|tren)
+const MEDIOS_TRANSPORTE = [
+  { key: 'avion', hint: 'Cualquier distancia' },
+  { key: 'bus', hint: 'Rutas hasta ~1.500 km' },
+  { key: 'tren', hint: 'Rutas hasta ~2.500 km' },
+];
 
 // Metal por tier (neuromarketing): bronce → plata → oro, de menos a más brillante.
 const TIERS = [
@@ -133,6 +141,7 @@ function LivePlanPanel({ form, minBudgetData, loadingMinBudget, noches }) {
           <LiveRow icon={IconCalendar} label="Salida" value={form.fecha_salida || 'Sin fecha'} />
           <LiveRow icon={IconClock} label="Duración" value={`${noches} noche${noches === 1 ? '' : 's'}`} />
           <LiveRow icon={IconUsers} label="Pasajeros" value={`${form.pasajeros}`} />
+          <LiveRow icon={TRANSPORT_ICONS[form.medio_transporte] || IconPlane} label="Transporte" value={TRANSPORT_LABELS[form.medio_transporte] || 'Avión'} />
           <LiveRow icon={(p) => <MetallicTierIcon tier={form.tier} {...p} />} label="Estilo" value={tier.label} />
         </div>
 
@@ -186,6 +195,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
     incluir_hotel: true,
     incluir_vehiculo: false,
     duracion_dias: 7,
+    medio_transporte: 'avion',
   });
 
   const [minBudgetData, setMinBudgetData] = useState(null);
@@ -219,6 +229,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
       incluir_hotel: form.incluir_hotel,
       incluir_vehiculo: form.incluir_vehiculo,
       tier: form.tier,
+      medio_transporte: form.medio_transporte,
     })
       .then((data) => {
         setMinBudgetData(data);
@@ -234,7 +245,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
         setMinBudgetData(null);
       })
       .finally(() => setLoadingMinBudget(false));
-  }, [form.origenCode, form.destinoCode, form.fecha_salida, form.duracion_dias, form.pasajeros, form.incluir_hotel, form.incluir_vehiculo, form.tier]);
+  }, [form.origenCode, form.destinoCode, form.fecha_salida, form.duracion_dias, form.pasajeros, form.incluir_hotel, form.incluir_vehiculo, form.tier, form.medio_transporte]);
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -294,6 +305,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
         tier: form.tier,
         modo: 'exacto',
         duracion_dias: form.duracion_dias,
+        medio_transporte: form.medio_transporte,
       };
 
       localStorage.setItem('rushtrip_last_search', JSON.stringify({
@@ -303,6 +315,7 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
         tier: form.tier,
         incluir_hotel: form.incluir_hotel,
         incluir_vehiculo: form.incluir_vehiculo,
+        medio_transporte: form.medio_transporte,
       }));
 
       const { createPlan } = await import('../api/client');
@@ -404,6 +417,47 @@ export default function PlanForm({ onPlanCreated, onPlanError, onPlanLoading }) 
                 </option>
               ))}
             </select>
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-muted-500 mb-3">¿Cómo quieres viajar?</label>
+            <div className="flex flex-wrap gap-3">
+              {MEDIOS_TRANSPORTE.map(({ key, hint }) => {
+                const Icon = TRANSPORT_ICONS[key];
+                const active = form.medio_transporte === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={hint}
+                    onClick={() => update('medio_transporte', key)}
+                    className={`group relative flex items-center gap-2.5 pl-3 pr-4 py-2.5 rounded-xl border-2 transition-all duration-200 ease-smooth ${
+                      active ? 'border-accent bg-accent/5' : 'border-border-100 bg-white hover:border-border-300'
+                    }`}
+                  >
+                    <span className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-200 ${
+                      active ? 'bg-accent text-white' : 'bg-border-50 text-muted-300'
+                    }`}>
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className={`text-sm font-medium ${active ? 'text-accent' : 'text-muted-400'}`}>
+                      {TRANSPORT_LABELS[key]}
+                    </span>
+                    {active && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
+                        <IconCheck className="w-2.5 h-2.5 text-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {form.medio_transporte !== 'avion' && (
+              <p className="text-xs text-muted-300 mt-2">
+                Precios estimados por distancia · menos CO₂. Si la ruta no es viable en {TRANSPORT_LABELS[form.medio_transporte].toLowerCase()}, te mostraremos opciones en avión.
+              </p>
+            )}
           </div>
         </section>
 

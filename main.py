@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from backend.routes.airports import router as airports_router
 from backend.routes.flights  import router as flights_router
+from backend.routes.transport import router as transport_router
 from backend.routes.hotels   import router as hotels_router
 from backend.routes.cars     import router as cars_router
 from backend.routes.plan     import router as plan_router
@@ -70,6 +71,10 @@ app = FastAPI(
         {
             "name":        "Vuelos",
             "description": "Busqueda de vuelos con fallback inteligente por mes"
+        },
+        {
+            "name":        "Transporte terrestre",
+            "description": "Busqueda de bus y tren con precios estimados por distancia"
         },
         {
             "name":        "Hoteles",
@@ -244,6 +249,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 app.include_router(plan_router)
 app.include_router(airports_router)
 app.include_router(flights_router)
+app.include_router(transport_router)
 app.include_router(hotels_router)
 app.include_router(cars_router)
 app.include_router(weather_router)

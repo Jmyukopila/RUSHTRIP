@@ -485,6 +485,19 @@ export function IconBus({ className = 'w-6 h-6' }) {
   );
 }
 
+export function IconTrain({ className = 'w-6 h-6' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3.5 L18 3.5 C19.1 3.5 20 4.4 20 5.5 L20 15 C20 16.1 19.1 17 18 17 L6 17 C4.9 17 4 16.1 4 15 L4 5.5 C4 4.4 4.9 3.5 6 3.5 Z" />
+      <path d="M4 10.5 L20 10.5" />
+      <path d="M9 3.5 L9 10.5 M15 3.5 L15 10.5" opacity="0.5" />
+      <circle cx="8" cy="13.8" r="1.1" />
+      <circle cx="16" cy="13.8" r="1.1" />
+      <path d="M8 17 L5.5 20.5 M16 17 L18.5 20.5" />
+    </svg>
+  );
+}
+
 export function IconBoat({ className = 'w-6 h-6' }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -606,6 +619,19 @@ export const WEATHER_ICON_MAP = {
   '🌨️': IconSnow,
   '❄️': IconSnow,
   '⛈️': IconStorm,
+};
+
+// Iconos y labels por medio de transporte del plan (campo `medio` del backend)
+export const TRANSPORT_ICONS = {
+  avion: IconPlane,
+  bus: IconBus,
+  tren: IconTrain,
+};
+
+export const TRANSPORT_LABELS = {
+  avion: 'Avión',
+  bus: 'Bus',
+  tren: 'Tren',
 };
 
 export const ACTIVITY_ICON_MAP = {

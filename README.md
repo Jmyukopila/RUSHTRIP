@@ -241,6 +241,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 | `tier` | string | `"estandar"` | Calidad del viaje: `economico`, `estandar`, `premium` |
 | `modo` | string | `"exacto"` | `exacto` requiere `fecha_regreso`; `flexible` usa `duracion_dias` |
 | `duracion_dias` | integer | `7` | Duración en días (solo modo `flexible`, 1-14) |
+| `medio_transporte` | string | `"avion"` | Medio de transporte: `avion`, `bus` o `tren`. Con bus/tren la ruta debe ser viable por distancia (bus ≤ 1.500 km, tren ≤ 2.500 km); si no lo es, el plan degrada a avión con `aviso` |
 
 **Request (modo exacto):**
 ```json
@@ -282,6 +283,7 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
   "fecha_regreso": "2026-12-22",
   "noches": 7,
   "presupuesto": 800.00,
+  "medio_transporte": "avion",
   "plan_optimo": {
     "vuelo": {
       "origen": "BOG",
@@ -357,6 +359,8 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 }
 ```
 
+> **Nota:** la key `plan_optimo.vuelo` contiene el **transporte principal** del plan. Con `medio_transporte: "bus"` o `"tren"` lleva el mismo contrato más los campos `medio` (`"bus"`/`"tren"`) y `distancia_km`, con `aerolinea_nombre` como operadora genérica, `logo_url` vacío y `link_compra` hacia Rome2Rio. La respuesta incluye `medio_transporte` con el medio efectivo (puede ser `"avion"` si la ruta terrestre no era viable), y en ese caso `aeropuertos_alternativos` viene vacío para bus/tren.
+
 **Códigos de error:**
 
 | Código | Significado | Ejemplo |
@@ -404,6 +408,62 @@ Endpoint principal. Recibe **nombres de ciudad** (o códigos IATA), fechas y pre
 > **Nota:** Si no hay vuelos en la fecha exacta, busca en todo el mes (`precision: "mes"`). Si tampoco, muestra próximos disponibles (`precision: "aproximada"`). Requiere códigos IATA (usar `/airports/` para resolver).
 
 **Validaciones:**
+- Fechas deben tener formato `YYYY-MM-DD`
+- `fecha_regreso` debe ser posterior a `fecha_salida`
+- Rango máximo: 30 días
+
+---
+
+### `GET /transport/` — Buscar transporte terrestre (bus/tren)
+
+`GET /transport/?medio=bus&origen=MAD&destino=BCN&fecha_salida=2026-08-10&fecha_regreso=2026-08-17&pasajeros=2`
+
+**Parámetros:**
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `medio` | string | — | Medio de transporte: `bus` o `tren` |
+| `origen` | string | — | Código IATA de la ciudad de origen (ej: `MAD`) |
+| `destino` | string | — | Código IATA de la ciudad de destino (ej: `BCN`) |
+| `fecha_salida` | string | — | Fecha de salida `YYYY-MM-DD` |
+| `fecha_regreso` | string | — | Fecha de regreso `YYYY-MM-DD` (debe ser posterior) |
+| `pasajeros` | integer | `1` | Número de pasajeros |
+
+**Response (200):**
+```json
+{
+  "opciones": [
+    {
+      "aerolinea": "",
+      "aerolinea_nombre": "FlixBus u operadores locales",
+      "descripcion": "Servicio de bus interurbano. Precio estimado según la distancia de la ruta.",
+      "logo_url": "",
+      "salida": "2026-08-10",
+      "regreso": "2026-08-17",
+      "origen": "MAD",
+      "destino": "BCN",
+      "medio": "bus",
+      "distancia_km": 489.9,
+      "duracion_minutos": 421,
+      "escalas": 0,
+      "escalas_texto": "Directo",
+      "precio_por_persona": 51.11,
+      "precio_total": 102.22,
+      "pasajeros": 2,
+      "co2_kg": 13.2,
+      "link_compra": "https://www.rome2rio.com/es/map/Madrid/Barcelona",
+      "tipo": "estimado"
+    }
+  ],
+  "aviso": "Precios estimados por distancia para bus; los horarios y tarifas reales dependen de la operadora.",
+  "precision": "estimada"
+}
+```
+
+> **Nota:** los precios se estiman por distancia (Haversine sobre coordenadas conocidas); no hay API de bus/tren en tiempo real. Si la ruta excede el límite del medio (bus 1.500 km, tren 2.500 km) o no hay coordenadas para algún extremo, `opciones` viene vacío con un `aviso` explicándolo. El mismo contrato que un vuelo + `medio` y `distancia_km`, para que el frontend lo renderice con los mismos componentes.
+
+**Validaciones:**
+- `medio` debe ser `bus` o `tren`
 - Fechas deben tener formato `YYYY-MM-DD`
 - `fecha_regreso` debe ser posterior a `fecha_salida`
 - Rango máximo: 30 días
@@ -666,7 +726,7 @@ Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de 
 
 Calcula un presupuesto mínimo y máximo sugerido usando precios de referencia estáticos — **no hace llamadas a APIs externas**. Ambos valores varían por **país** (precios de referencia por destino) y por **tier** (`economico` / `estandar` / `premium`): el tier económico rebaja el mínimo y ajusta poco el máximo; el premium sube ambos.
 
-**Parámetros:** `origen`, `destino`, `fecha_salida`, `fecha_regreso`, `pasajeros` (default 1), `incluir_hotel` (default true), `incluir_vehiculo` (default false), `tier` (default `estandar`).
+**Parámetros:** `origen`, `destino`, `fecha_salida`, `fecha_regreso`, `pasajeros` (default 1), `incluir_hotel` (default true), `incluir_vehiculo` (default false), `tier` (default `estandar`), `medio_transporte` (default `avion`; con `bus`/`tren` en ruta viable el mínimo de transporte se estima por distancia y suele ser menor).
 
 **Response (200):**
 ```json
