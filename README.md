@@ -24,7 +24,7 @@ Escribí el nombre de tu ciudad de origen y destino, dale un presupuesto total y
 - **Hoteles con fotos y precios reales** — Via Hotels.nl API (datos reales con fotos, precios, ratings). Fallback a precios estimados por destino si no hay API key configurada. Las fotos se complementan con Pexels.
 - **Alquiler de coches** — Via RapidAPI con fallback a precios estimados por destino y links de afiliado a Localrent/EconomyBookings.
 - **Clima del destino** — Pronóstico real día a día para los días exactos del viaje (Open-Meteo, sin API key). Para fechas a más de 16 días muestra el clima típico calculado con datos históricos reales de años anteriores.
-- **Mejores actividades del destino** — Puntos de interés reales ordenados por relevancia turística (OpenTripMap, key gratuita opcional) con categoría, precio orientativo y links de reserva via Klook/KKday. Sin key, muestra una selección curada por destino. Las actividades son recomendaciones informativas: no entran en el cálculo del presupuesto.
+- **Mejores actividades del destino** — Puntos de interés reales ordenados por relevancia turística (OpenTripMap, key gratuita opcional) con categoría, precio orientativo y links de búsqueda a Klook/KKday por nombre de actividad. Las actividades gratis (playas, miradores, templos, parques) muestran "Visita libre" en lugar de botones de reserva. Sin key, muestra una selección curada por destino. Las actividades son recomendaciones informativas: no entran en el cálculo del presupuesto.
 - **Comparativa por tiers** — Al ver los resultados, podés comparar opciones Económico, Estándar y Premium para elegir según tu presupuesto.
 - **Frontend responsive** — Interfaz moderna hecha en React + Tailwind con cards, badges, diseño limpio y animaciones suaves.
 
@@ -154,12 +154,14 @@ La suite es offline (mockea la red, no requiere API keys) y cubre la lógica de 
 | `HOTELSNL_API_KEY` | No* | API key de Hotels.nl para hoteles reales (200 req/día gratis) |
 | `PEXELS_API_KEY` | No* | API key de Pexels para fotos de hoteles (200 req/hora gratis) |
 | `OPENTRIPMAP_API_KEY` | No* | API key de OpenTripMap para actividades reales del destino (gratis) |
+| `DEEPL_API_KEY` | No* | API key de DeepL Free (500k chars/mes) para traducir descripciones de actividades al español |
+| `DEEPL_API_URL` | No | URL de DeepL (`https://api-free.deepl.com/v2/translate` por defecto) |
 | `CORS_ORIGINS` | No | Orígenes CORS separados por coma (default: `http://localhost:5173,http://127.0.0.1:5173`) |
 | `SUPABASE_DB_URL` | No | Connection string de Postgres (pooler de Supabase) para persistir usuarios/sesiones/reservas en la nube. Vacío = SQLite local |
 | `APP_BASE_URL` | No | URL pública del frontend para construir los enlaces de los correos (default: `http://localhost:5173`) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | No** | Envío de correos (recuperación de contraseña y verificación de email) |
 
-\* Sin `HOTELSNL_API_KEY` los hoteles se muestran como precios estimados. Sin `PEXELS_API_KEY` se usan placehold.co. Sin `OPENTRIPMAP_API_KEY` las actividades son una selección curada por RushTrip.
+\* Sin `HOTELSNL_API_KEY` los hoteles se muestran como precios estimados. Sin `PEXELS_API_KEY` se usan placehold.co. Sin `OPENTRIPMAP_API_KEY` las actividades son una selección curada por RushTrip. Sin `DEEPL_API_KEY` las descripciones reales de OpenTripMap se muestran en inglés o se reemplazan por la plantilla en español.
 
 \*\* Sin SMTP configurado, los correos de verificación y recuperación **no se envían**: su contenido (incluido el enlace) se registra en el log del servidor, útil en desarrollo. El flujo funciona igual sin credenciales.
 
@@ -642,6 +644,7 @@ Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de 
       "precio_estimado": 17.0,
       "gratis": false,
       "moneda": "USD",
+      "foto_url": "https://images.pexels.com/...",
       "link_reserva": "https://klook.tpo.li/GBfSCVf0?dest=madrid",
       "link_klook": "https://klook.tpo.li/GBfSCVf0?dest=madrid",
       "link_kkday": "https://kkday.tpo.li/zHk5IFqZ?dest=madrid",
@@ -653,7 +656,7 @@ Carga on-demand del detalle de un hotel real de Hotels.nl: galería completa de 
 }
 ```
 
-> **Nota:** Con `OPENTRIPMAP_API_KEY` configurada (gratis en [dev.opentripmap.org](https://dev.opentripmap.org)) devuelve puntos de interés reales ordenados por relevancia turística (`precision: "real"`, `fuente: "opentripmap"`). Sin key, o si la API falla sin cache disponible, degrada a una selección curada por RushTrip (`precision: "estimada"`). Los precios son **siempre orientativos** por tipo de actividad: la reserva y el pago se realizan en sitios externos (Klook/KKday), por lo que las actividades **no entran en el cálculo del presupuesto del plan**. El mismo objeto viene embebido en el campo `actividades` de la respuesta de `POST /plan/`.
+> **Nota:** Las actividades se **personalizan según el contexto del plan**: `tier`, `clima`, `pasajeros` y duración del viaje reordenan los resultados (por ejemplo, museos suben si el pronóstico es lluvioso, y excursiones de día completo se penalizan en viajes de una noche). Con `OPENTRIPMAP_API_KEY` configurada (gratis en [dev.opentripmap.org](https://dev.opentripmap.org)) se consultan puntos de interés reales (`precision: "real"`, `fuente: "opentripmap"`) enriquecidos con descripción, foto propia o foto de Pexels, y traducidos al español vía DeepL API Free si se configura `DEEPL_API_KEY`. El dataset curado local cubre más de 50 destinos y, cuando existe para el destino, se fusiona con los datos reales dándole prioridad. Sin key, o si la API falla sin cache disponible, degrada a la selección curada (`precision: "estimada"`). Los precios son **siempre orientativos** por tipo de actividad: la reserva y el pago se realizan en sitios externos (Klook/KKday), por lo que las actividades **no entran en el cálculo del presupuesto del plan**. El mismo objeto viene embebido en el campo `actividades` de la respuesta de `POST /plan/`.
 
 ---
 

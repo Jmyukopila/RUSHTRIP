@@ -41,6 +41,10 @@ class Settings(BaseSettings):
 
     opentripmap_api_key:  str = ""
 
+    # ─── DeepL (traducción de descripciones de actividades) ────────────
+    deepl_api_key:        str = ""
+    deepl_api_url:        str = "https://api-free.deepl.com/v2/translate"
+
     # ─── Supabase (backend en la nube para usuarios/sesiones/reservas) ──
     # Connection string de Postgres (usar el pooler de Supabase). Si esta VACIO,
     # la capa de usuarios degrada a SQLite local (ver core/auth_db.py).
