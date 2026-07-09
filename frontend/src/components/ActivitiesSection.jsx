@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AFFILIATE_LINKS } from '../constants';
-import { IconTicket, IconPin, IconFilter, IconImage, ACTIVITY_ICON_MAP } from './icons';
+import { IconTicket, IconPin, IconFilter, ACTIVITY_ICON_MAP } from './icons';
 
 const BADGE_ACTIVIDADES = {
   real: {
@@ -29,6 +29,36 @@ const FILTROS = [
   { key: 'Espectáculo', label: 'Espectáculos' },
 ];
 
+const GRADIENT_POR_CATEGORIA = {
+  'Parque de atracciones': 'bg-gradient-to-br from-warning/15 to-accent2/25',
+  'Museo': 'bg-gradient-to-br from-accent2/15 to-accent2/30',
+  'Espectáculo': 'bg-gradient-to-br from-accent/10 to-accent2/20',
+  'Mirador': 'bg-gradient-to-br from-accent/10 to-success/15',
+  'Playa': 'bg-gradient-to-br from-warning/10 to-accent/15',
+  'Templo / Iglesia': 'bg-gradient-to-br from-accent2/15 to-muted/20',
+  'Parque / Naturaleza': 'bg-gradient-to-br from-success/12 to-accent2/20',
+  'Sitio histórico': 'bg-gradient-to-br from-warning/10 to-accent2/25',
+  'Tour guiado': 'bg-gradient-to-br from-accent/10 to-accent2/20',
+  'Excursión': 'bg-gradient-to-br from-success/10 to-accent2/20',
+  'Paseo en barca': 'bg-gradient-to-br from-accent/10 to-success/15',
+  'Paseo en barco': 'bg-gradient-to-br from-accent/10 to-success/15',
+  'Tour gastronómico': 'bg-gradient-to-br from-warning/12 to-accent/15',
+  'Atracción': 'bg-gradient-to-br from-accent2/10 to-accent2/20',
+};
+
+function CategoryPlaceholder({ act }) {
+  const ActIcon = ACTIVITY_ICON_MAP[act.categoria] || IconPin;
+  const gradient = GRADIENT_POR_CATEGORIA[act.categoria] || GRADIENT_POR_CATEGORIA['Atracción'];
+  return (
+    <div className={`w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center ${gradient}`}>
+      <ActIcon className="w-10 h-10 text-text/30" />
+      <span className="text-[10px] font-medium text-text/60 leading-tight line-clamp-2">
+        {act.nombre}
+      </span>
+    </div>
+  );
+}
+
 function formatMoney(n) {
   if (n == null || n === 0) return '$0';
   return `$${Math.abs(n).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
@@ -50,6 +80,10 @@ function ActivityCard({ act, delay }) {
     >
       {/* Imagen / fallback */}
       <div className="h-32 bg-accent2/10 relative overflow-hidden">
+        {showFoto && !imgLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-accent2/15" aria-hidden="true" />
+        )}
+
         {showFoto ? (
           <img
             src={act.foto_url}
@@ -62,14 +96,15 @@ function ActivityCard({ act, delay }) {
               ${imgLoaded ? 'opacity-100' : 'opacity-0'}
             `}
             onLoad={() => setImgLoaded(true)}
-            onError={() => setShowFoto(false)}
+            onError={() => {
+              setImgLoaded(false);
+              setShowFoto(false);
+            }}
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center bg-gradient-to-br from-accent2/5 to-accent2/15 text-accent2/70">
-            <IconImage className="w-8 h-8" />
-            <span className="text-[10px] leading-tight line-clamp-2">{act.nombre}</span>
-          </div>
+          <CategoryPlaceholder act={act} />
         )}
+
         <span className="absolute top-2 right-2 badge bg-white/90 text-text border border-border shadow-sm">
           {ActIcon && <ActIcon className="w-3.5 h-3.5 inline mr-1" />}
           {act.categoria}

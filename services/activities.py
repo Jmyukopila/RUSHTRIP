@@ -1127,7 +1127,8 @@ def _url_imagen_confiable(url: str) -> str:
 # Endpoints de Wikimedia para obtener imágenes de puntos de interés.
 # Son gratuitos, no requieren API key y suelen tener fotos de buena calidad
 # de hitos turísticos que OpenTripMap no cubre.
-_WIKIPEDIA_SUMMARY_URL = "https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}"
+_WIKIPEDIA_ACTION_URL = "https://{lang}.wikipedia.org/w/api.php"
+_COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php"
 _WIKIPEDIA_SEARCH_URL = "https://es.wikipedia.org/w/rest.php/v1/search/page"
 _TTL_WIKIMEDIA = 30 * 24 * 3600
 
@@ -1145,40 +1146,108 @@ def _extraer_titulo_wikipedia(url: str) -> str:
         return ""
 
 
+async def _commons_file_page_a_url(url: str) -> str:
+    """
+    Convierte una URL de página de Commons (commons.wikimedia.org/wiki/File:...)
+    en una URL directa de imagen vía Action API de Commons.
+    """
+    if "wikimedia.org/wiki/file:" not in url.lower():
+        return _url_imagen_confiable(url)
+    try:
+        path = urlparse(url).path or ""
+        title = unquote(path.split("/wiki/", 1)[-1].replace("_", " "))
+        if not title.startswith("File:"):
+            return ""
+        resp = await request_with_retry(
+            "GET", _COMMONS_API_URL,
+            provider="wikimedia",
+            max_retries=1,
+            headers={"User-Agent": "RushTrip/1.0 (actividades@rushtrip.example)"},
+            params={
+                "action": "query",
+                "titles": title,
+                "prop": "imageinfo",
+                "iiprop": "url|thumburl",
+                "iiurlwidth": 400,
+                "format": "json",
+                "origin": "*",
+            },
+        )
+        if resp.status_code != 200:
+            return ""
+        data = resp.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page in pages.values():
+            for info in page.get("imageinfo") or []:
+                image_url = info.get("thumburl") or info.get("url") or ""
+                validated = _url_imagen_confiable(image_url)
+                if validated:
+                    return validated
+        return ""
+    except Exception as e:
+        logger.debug(f"No se pudo resolver Commons file page '{url}': {e}")
+        return ""
+
+
+async def _foto_wikipedia_pageimages(title: str, lang: str) -> str:
+    """
+    Devuelve el thumbnail principal de un artículo de Wikipedia usando la
+    Action API (prop=pageimages). Más fiable que la REST summary porque
+    devuelve el thumb seleccionado por Wikipedia, no SVGs/mapas sueltos.
+    """
+    if not title:
+        return ""
+    try:
+        resp = await request_with_retry(
+            "GET", _WIKIPEDIA_ACTION_URL.format(lang=lang),
+            provider="wikimedia",
+            max_retries=1,
+            headers={"User-Agent": "RushTrip/1.0 (actividades@rushtrip.example)"},
+            params={
+                "action": "query",
+                "titles": title,
+                "prop": "pageimages",
+                "piprop": "thumbnail",
+                "pithumbsize": 400,
+                "format": "json",
+                "origin": "*",
+            },
+        )
+        if resp.status_code != 200:
+            return ""
+        data = resp.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page in pages.values():
+            thumb = page.get("thumbnail", {})
+            image_url = thumb.get("source", "")
+            validated = _url_imagen_confiable(image_url)
+            if validated:
+                return validated
+        return ""
+    except Exception as e:
+        logger.debug(f"No se pudo obtener pageimage ({lang}) para '{title}': {e}")
+        return ""
+
+
 async def _foto_wikipedia_por_url(url: str) -> str:
     """
-    Dada una URL de Wikipedia, devuelve la URL de la imagen principal del
-    artículo usando la API REST de Wikimedia. Prueba primero en español y,
-    si no existe, en inglés.
+    Dada una URL de Wikipedia, devuelve la URL del thumbnail principal del
+    artículo vía Action API pageimages. Prueba primero en español y luego en inglés.
     """
     title = _extraer_titulo_wikipedia(url)
     if not title:
         return ""
 
-    cache_key = f"wikimedia:title:v2:{_normalizar(title)}"
+    cache_key = f"wikimedia:title:v4:{_normalizar(title)}"
     cached = cache_get(cache_key)
     if cached and isinstance(cached, str):
         return cached
 
     for lang in ("es", "en"):
-        try:
-            endpoint = _WIKIPEDIA_SUMMARY_URL.format(lang=lang, title=quote(title))
-            resp = await request_with_retry(
-                "GET", endpoint,
-                provider="wikimedia",
-                max_retries=1,
-                headers={"User-Agent": "RushTrip/1.0 (actividades@rushtrip.example)"},
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                image_url = data.get("originalimage", {}).get("source") or ""
-                if image_url:
-                    image_url = _url_imagen_confiable(image_url)
-                    if image_url:
-                        cache_set(cache_key, image_url, provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
-                        return image_url
-        except Exception as e:
-            logger.debug(f"No se pudo obtener imagen de Wikipedia ({lang}) para '{title}': {e}")
+        image_url = await _foto_wikipedia_pageimages(title, lang)
+        if image_url:
+            cache_set(cache_key, image_url, provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+            return image_url
 
     cache_set(cache_key, "", provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
     return ""
@@ -1193,7 +1262,7 @@ async def _foto_wikipedia_por_nombre(nombre: str, ciudad: str) -> str:
         return ""
 
     query = f"{nombre.strip()} {ciudad.strip()}".strip()
-    cache_key = f"wikimedia:search:v3:{_normalizar(query)}"
+    cache_key = f"wikimedia:search:v4:{_normalizar(query)}"
     cached = cache_get(cache_key)
     if cached and isinstance(cached, str):
         return cached
@@ -1218,10 +1287,8 @@ async def _foto_wikipedia_por_nombre(nombre: str, ciudad: str) -> str:
 
         page_key = pages[0].get("key", "")
         if page_key:
-            # Intentar la imagen principal del artículo (mayor resolución que el thumbnail)
-            image_url = await _foto_wikipedia_por_url(
-                f"https://es.wikipedia.org/wiki/{quote(page_key)}"
-            )
+            # Imagen principal del artículo via pageimages (más fiable que thumbnail de búsqueda)
+            image_url = await _foto_wikipedia_pageimages(page_key, "es")
             if image_url:
                 cache_set(cache_key, image_url, provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
                 return image_url
@@ -1259,7 +1326,7 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
     if not xid:
         return {"descripcion": "", "foto_url": ""}
 
-    cache_key = f"opentripmap:xid:v3:{xid}"
+    cache_key = f"opentripmap:xid:v4:{xid}"
     cached = cache_get(cache_key)
     if cached and isinstance(cached, dict):
         return cached
@@ -1269,17 +1336,25 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
         data = await _detalle_poi_opentripmap(xid, language="es")
         descripcion = _extraer_descripcion_poi(data)
 
-        def _extraer_foto_url(d: dict) -> str:
-            for candidato in (
-                d.get("preview", {}).get("source", ""),
-                d.get("image", ""),
-            ):
-                url = _url_imagen_confiable(candidato)
+        async def _extraer_foto_url(d: dict) -> str:
+            preview = d.get("preview", {}).get("source", "")
+            if preview:
+                url = _url_imagen_confiable(preview)
                 if url:
                     return url
+
+            image = d.get("image", "")
+            if "wikimedia.org/wiki/file:" in image.lower():
+                url = await _commons_file_page_a_url(image)
+                if url:
+                    return url
+
+            url = _url_imagen_confiable(image)
+            if url:
+                return url
             return ""
 
-        foto_url = _extraer_foto_url(data)
+        foto_url = await _extraer_foto_url(data)
 
         # 2) Fallback a inglés si falta descripción o foto (el detalle en inglés
         #    suele tener más contenido multimedia para hitos no hispanos).
@@ -1288,7 +1363,7 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
             if not descripcion:
                 descripcion = _extraer_descripcion_poi(data_en)
             if not foto_url:
-                foto_url = _extraer_foto_url(data_en)
+                foto_url = await _extraer_foto_url(data_en)
 
         # 3) Si OpenTripMap no aporta foto directa, usamos la imagen del
         #    artículo de Wikipedia vinculado.
@@ -1461,10 +1536,10 @@ async def obtener_actividades(
     lluvia_bucket = _bucket_lluvia(clima)
     pax_bucket = _bucket_pasajeros(pasajeros)
     # Cache key separada por contexto discretizado para no mezclar recomendaciones
-    # de distintos perfiles de viaje.  Versión 4 invalida resultados previos tras
-    # cambios en imágenes, precios y eliminación de links de afiliado.
+    # de distintos perfiles de viaje.  Versión 5 invalida resultados previos tras
+    # mejoras en cobertura de imágenes (Commons, pageimages) y placeholder visual.
     cache_key = (
-        f"actividades:v4:{ciudad_limpia.lower()}:{limite}:"
+        f"actividades:v5:{ciudad_limpia.lower()}:{limite}:"
         f"{tier.lower()}:{lluvia_bucket}:{pax_bucket}"
     )
 
