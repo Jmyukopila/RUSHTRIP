@@ -38,6 +38,7 @@ function ActivityCard({ act, delay }) {
   const ActIcon = ACTIVITY_ICON_MAP[act.categoria] || IconPin;
   const hasFotoProp = act.foto_url && act.foto_url.startsWith('http');
   const [showFoto, setShowFoto] = useState(hasFotoProp);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   return (
     <div
@@ -53,12 +54,20 @@ function ActivityCard({ act, delay }) {
           <img
             src={act.foto_url}
             alt={act.nombre}
-            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={`
+              w-full h-full object-cover transition-opacity duration-500
+              ${imgLoaded ? 'opacity-100' : 'opacity-0'}
+            `}
+            onLoad={() => setImgLoaded(true)}
             onError={() => setShowFoto(false)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-accent2/60">
-            <IconImage className="w-10 h-10" />
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center bg-gradient-to-br from-accent2/5 to-accent2/15 text-accent2/70">
+            <IconImage className="w-8 h-8" />
+            <span className="text-[10px] leading-tight line-clamp-2">{act.nombre}</span>
           </div>
         )}
         <span className="absolute top-2 right-2 badge bg-white/90 text-text border border-border shadow-sm">
@@ -75,37 +84,13 @@ function ActivityCard({ act, delay }) {
 
         <div className="flex items-center justify-between gap-3 mt-auto pt-2">
           {act.gratis ? (
-            <span className="badge bg-success/15 text-success border border-success/20">Gratis</span>
+            <span className="badge bg-success/15 text-success border border-success/20">Gratis / Visita libre</span>
           ) : (
             <p className="font-mono text-sm text-text">
               {formatMoney(act.precio_estimado)}
               <span className="text-xs text-muted-300"> aprox./persona</span>
             </p>
           )}
-          <div className="flex gap-2 shrink-0 items-center">
-            {act.gratis ? (
-              <span className="text-xs text-muted-300">Visita libre</span>
-            ) : (
-              <>
-                <a
-                  href={act.link_klook}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-primary text-xs py-1.5 px-3"
-                >
-                  Klook →
-                </a>
-                <a
-                  href={act.link_kkday}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-outline text-xs py-1.5 px-3"
-                >
-                  KKday →
-                </a>
-              </>
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -232,16 +217,31 @@ export default function ActivitiesSection({ actividades, ciudad, delay = 1300 })
         ))
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
-        {actividades.aviso && (
-          <p className="text-xs text-muted-300">{actividades.aviso}</p>
-        )}
-        <p className="text-xs text-muted-300">
-          Más actividades:{' '}
-          <a href={AFFILIATE_LINKS.klook} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Klook</a>
-          {' · '}
-          <a href={AFFILIATE_LINKS.kkday} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">KKday</a>
+      <div className="mt-5 p-4 rounded-xl bg-card border border-border">
+        <p className="text-sm text-text mb-3">
+          ¿Quieres reservar o ver más detalles de estas actividades? Búscalas en:
         </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={AFFILIATE_LINKS.klook}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            className="btn-primary text-sm py-2 px-4"
+          >
+            Klook →
+          </a>
+          <a
+            href={AFFILIATE_LINKS.kkday}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            className="btn-outline text-sm py-2 px-4"
+          >
+            KKday →
+          </a>
+        </div>
+        {actividades.aviso && (
+          <p className="text-xs text-muted-300 mt-3">{actividades.aviso}</p>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,8 @@ from services.activities import (
     _bucket_lluvia,
     _bucket_pasajeros,
     _calcular_noches,
+    _fusionar_actividades,
+    _normalizar_nombre_actividad,
     _score_actividad,
 )
 
@@ -462,3 +464,45 @@ async def test_obtener_actividades_con_opentripmap(monkeypatch):
     assert "Parque Test" in nombres
     assert any(a["fuente"] == "curado" for a in resultado["actividades"])
     assert any(a["fuente"] == "opentripmap" for a in resultado["actividades"])
+
+
+# ---------------------------------------------------------------------------
+# Deduplicación de nombres
+# ---------------------------------------------------------------------------
+
+
+def test_normalizacion_nombre_detecta_mismo_lugar_reordenado():
+    assert _normalizar_nombre_actividad("JK Memorial") == _normalizar_nombre_actividad("Memorial JK")
+    assert _normalizar_nombre_actividad("  JK   Memorial  ") == _normalizar_nombre_actividad("Memorial, JK")
+    assert _normalizar_nombre_actividad("Museo Nacional de Antropología") == \
+           _normalizar_nombre_actividad("Antropología, Museo Nacional de")
+
+
+def test_normalizacion_nombre_conserva_lugares_distintos():
+    assert _normalizar_nombre_actividad("Museo del Prado") != _normalizar_nombre_actividad("Museo Reina Sofía")
+    assert _normalizar_nombre_actividad("JK Memorial") != _normalizar_nombre_actividad("Catedral de Brasilia")
+
+
+def test_fusionar_actividades_dedupa_por_nombre_canonico():
+    curadas = [
+        {"nombre": "JK Memorial", "categoria": "Museo", "precio_estimado": 0},
+    ]
+    reales = [
+        {"nombre": "Memorial JK", "categoria": "Museo", "precio_estimado": 0},
+    ]
+    resultado = _fusionar_actividades(curadas, reales, limite=5)
+    assert len(resultado) == 1
+    assert resultado[0]["nombre"] == "JK Memorial"
+
+
+def test_fusionar_actividades_prioriza_curadas_y_mantiene_orden():
+    curadas = [
+        {"nombre": "Museo Alfa", "categoria": "Museo", "precio_estimado": 10},
+        {"nombre": "Mirador Beta", "categoria": "Mirador", "precio_estimado": 0},
+    ]
+    reales = [
+        {"nombre": "Playa Gamma", "categoria": "Playa", "precio_estimado": 0},
+        {"nombre": "Alfa Museo", "categoria": "Museo", "precio_estimado": 12},
+    ]
+    resultado = _fusionar_actividades(curadas, reales, limite=5)
+    assert [a["nombre"] for a in resultado] == ["Museo Alfa", "Mirador Beta", "Playa Gamma"]

@@ -12,7 +12,7 @@ import re
 import unicodedata
 from datetime import datetime, timedelta
 from statistics import mean
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from core.config import settings
 from core.database_cache import cache_get, cache_get_stale, cache_set
@@ -54,8 +54,8 @@ _TTL_TRADUCCION = 30 * 24 * 3600   # traducciones estables
 _TTL_PEXELS = 7 * 24 * 3600        # fotos de stock
 
 _AVISO_PRECIOS = (
-    "Precios orientativos por tipo de actividad. "
-    "La reserva y el pago se realizan en sitios externos."
+    "Precios orientativos por tipo de actividad, sujetos a cambio. "
+    "La reserva y el pago se realizan en plataformas externas (Klook, KKday u otras)."
 )
 
 # Mapeo de 'kinds' de OpenTripMap → (categoría en español, emoji, precio estimado USD)
@@ -114,7 +114,7 @@ _DESCRIPCIONES: dict[str, str] = {
 ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
     # ─── Colombia / Latinoamérica Norte ───────────────────────────────────
     "BOG": [
-        ("Museo del Oro", "Museo", "🏛️", 5, "La colección de orfebrería prehispánica más grande del mundo."),
+        ("Museo del Oro", "Museo", "🏛️", 2, "La colección de orfebrería prehispánica más grande del mundo."),
         ("Cerro de Monserrate", "Mirador", "🌄", 8, "Vistas panorámicas de toda la ciudad subiendo en teleférico o funicular."),
         ("Tour por La Candelaria", "Tour guiado", "🚶", 15, "Recorrido por el centro histórico, sus calles coloniales y arte urbano."),
         ("Museo Botero", "Museo", "🏛️", 0, "Obras de Fernando Botero y su colección de arte internacional."),
@@ -136,7 +136,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
     ],
     # ─── México y Caribe ──────────────────────────────────────────────────
     "MEX": [
-        ("Museo Nacional de Antropología", "Museo", "🏛️", 5, "El museo más importante de México y su famosa Piedra del Sol."),
+        ("Museo Nacional de Antropología", "Museo", "🏛️", 4, "El museo más importante de México y su famosa Piedra del Sol."),
         ("Teotihuacán", "Excursión", "🚌", 40, "Las pirámides del Sol y de la Luna a una hora de la ciudad."),
         ("Centro Histórico y el Zócalo", "Sitio histórico", "🏰", 0, "La plaza principal, la Catedral y el Templo Mayor."),
         ("Bosque y Castillo de Chapultepec", "Parque / Naturaleza", "🌳", 4, "El gran pulmón de la ciudad con su castillo en lo alto."),
@@ -158,16 +158,16 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Paseo en barco por Biscayne Bay", "Paseo en barco", "🛥️", 30, "La bahía, el skyline y las mansiones de las islas desde el agua."),
     ],
     "MCO": [
-        ("Walt Disney World", "Parque de atracciones", "🎢", 110, "El complejo de parques temáticos más visitado del mundo."),
-        ("Universal Orlando", "Parque de atracciones", "🎢", 110, "Los parques de Universal y el mundo mágico de Harry Potter."),
-        ("Kennedy Space Center", "Museo", "🏛️", 75, "El centro espacial de la NASA con cohetes y transbordadores reales."),
+        ("Walt Disney World", "Parque de atracciones", "🎢", 120, "El complejo de parques temáticos más visitado del mundo."),
+        ("Universal Orlando", "Parque de atracciones", "🎢", 115, "Los parques de Universal y el mundo mágico de Harry Potter."),
+        ("Kennedy Space Center", "Museo", "🏛️", 80, "El centro espacial de la NASA con cohetes y transbordadores reales."),
         ("ICON Park", "Atracción", "📍", 30, "Noria gigante, restaurantes y entretenimiento en International Drive."),
         ("Lake Eola Park", "Parque / Naturaleza", "🌳", 0, "El parque del centro de Orlando, ideal para un paseo al atardecer."),
     ],
     "JFK": [
         ("Central Park", "Parque / Naturaleza", "🌳", 0, "El parque urbano más famoso del mundo, en pleno Manhattan."),
         ("Museo Metropolitano (The Met)", "Museo", "🏛️", 30, "Uno de los museos de arte más grandes e importantes del planeta."),
-        ("Estatua de la Libertad y Ellis Island", "Excursión", "⛴️", 25, "Ferry a los dos símbolos de la llegada a América."),
+        ("Estatua de la Libertad y Ellis Island", "Excursión", "⛴️", 24, "Ferry a los dos símbolos de la llegada a América."),
         ("Espectáculo en Broadway", "Espectáculo", "🎭", 80, "Un musical en los teatros más famosos del mundo."),
         ("Puente de Brooklyn", "Mirador", "🌄", 0, "Cruce a pie con las mejores vistas del skyline de Manhattan."),
     ],
@@ -175,12 +175,12 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Paseo de la Fama y Dolby Theatre", "Sitio histórico", "🏰", 0, "Las estrellas de Hollywood y el teatro de los Oscar."),
         ("Santa Mónica Pier", "Parque de atracciones", "🎢", 0, "Muelle icónico con noria, juegos y atardeceres sobre el Pacífico."),
         ("Getty Center", "Museo", "🏛️", 0, "Arte, arquitectura y jardines con vistas panorámicas de Los Ángeles."),
-        ("Universal Studios Hollywood", "Parque de atracciones", "🎢", 120, "Parque temático y estudios de cine en plena Hollywood."),
+        ("Universal Studios Hollywood", "Parque de atracciones", "🎢", 125, "Parque temático y estudios de cine en plena Hollywood."),
         ("Venice Beach y Muscle Beach", "Playa", "🏖️", 0, "El paseo costero más colorido y alternativo de California."),
     ],
     "SFO": [
         ("Golden Gate Bridge", "Mirador", "🌄", 0, "El puente naranja más fotografiado del mundo, símbolo de San Francisco."),
-        ("Alcatraz", "Excursión", "⛴️", 45, "Tour por la famosa prisión en la isla rocosa de la bahía."),
+        ("Alcatraz", "Excursión", "⛴️", 42, "Tour por la famosa prisión en la isla rocosa de la bahía."),
         ("Pier 39 y Fisherman's Wharf", "Atracción", "📍", 0, "Leones marinos, restaurantes y tiendas en el muelle más animado."),
         ("Cable Cars", "Atracción", "📍", 8, "Paseo en los históricos tranvías de cable por las calles empinadas."),
         ("Muir Woods", "Parque / Naturaleza", "🌳", 15, "Bosque de secuoyas gigantes a pocos minutos de la ciudad."),
@@ -188,8 +188,8 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
     "SEA": [
         ("Pike Place Market", "Atracción", "📍", 0, "Mercado histórico con puestos de pescado, flores y artesanías."),
         ("Space Needle", "Mirador", "🌄", 35, "Vista panorámica de la ciudad, el mar y el Monte Rainier."),
-        ("Museo de la Cultura Pop (MoPOP)", "Museo", "🏛️", 30, "Rock, ciencia ficción y cultura popular en un edificio futurista."),
-        ("Chihuly Garden and Glass", "Museo", "🏛️", 36, "Esculturas de vidrio soplado junto a la Space Needle."),
+        ("Museo de la Cultura Pop (MoPOP)", "Museo", "🏛️", 35, "Rock, ciencia ficción y cultura popular en un edificio futurista."),
+        ("Chihuly Garden and Glass", "Museo", "🏛️", 33, "Esculturas de vidrio soplado junto a la Space Needle."),
         ("Bainbridge Island en ferry", "Excursión", "⛴️", 20, "Paseo en ferry con vistas al skyline y la isla vinícola."),
     ],
     "LAS": [
@@ -243,7 +243,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
     ],
     "YVR": [
         ("Stanley Park", "Parque / Naturaleza", "🌳", 0, "Parque costero gigante con el Seawall y tótems indígenas."),
-        ("Capilano Suspension Bridge", "Parque / Naturaleza", "🌳", 55, "Puente colgante entre bosques de cedros y secuoyas."),
+        ("Capilano Suspension Bridge", "Parque / Naturaleza", "🌳", 35, "Puente colgante entre bosques de cedros y secuoyas."),
         ("Granville Island", "Atracción", "📍", 0, "Mercado público, artesanías y restaurantes con vista a la bahía."),
         ("Grouse Mountain", "Mirador", "🌄", 50, "Vistas de la ciudad y actividades de montaña todo el año."),
         ("Gastown y Steam Clock", "Sitio histórico", "🏰", 0, "Barrio histórico con el famoso reloj de vapor y calles de adoquines."),
@@ -321,15 +321,15 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Palacio de Versalles", "Excursión", "🚌", 25, "El palacio y los jardines del Rey Sol, a 40 minutos de París."),
     ],
     "FCO": [
-        ("Coliseo y Foro Romano", "Sitio histórico", "🏰", 20, "El anfiteatro más famoso del mundo y el corazón de la antigua Roma."),
-        ("Museos Vaticanos y Capilla Sixtina", "Museo", "🏛️", 22, "Los frescos de Miguel Ángel y una de las colecciones de arte más grandes."),
+        ("Coliseo y Foro Romano", "Sitio histórico", "🏰", 18, "El anfiteatro más famoso del mundo y el corazón de la antigua Roma."),
+        ("Museos Vaticanos y Capilla Sixtina", "Museo", "🏛️", 20, "Los frescos de Miguel Ángel y una de las colecciones de arte más grandes."),
         ("Fontana di Trevi y centro histórico", "Tour guiado", "🚶", 0, "Paseo por el Panteón, Piazza Navona y la fuente más famosa del mundo."),
         ("Galería Borghese", "Museo", "🏛️", 15, "Berninis y Caravaggios en una villa rodeada de jardines."),
         ("Tour gastronómico por Trastevere", "Tour gastronómico", "🍷", 45, "Pasta, vino y gelato en el barrio más auténtico de Roma."),
     ],
     "LHR": [
         ("Museo Británico", "Museo", "🏛️", 0, "La piedra Rosetta y tesoros de todas las civilizaciones, con entrada gratuita."),
-        ("Torre de Londres", "Sitio histórico", "🏰", 40, "Mil años de historia y las Joyas de la Corona."),
+        ("Torre de Londres", "Sitio histórico", "🏰", 37, "Mil años de historia y las Joyas de la Corona."),
         ("London Eye", "Mirador", "🌄", 35, "La noria sobre el Támesis con vistas del Parlamento y el Big Ben."),
         ("Mercado de Camden", "Atracción", "📍", 0, "Mercados alternativos, música y comida del mundo junto al canal."),
         ("Teatro en el West End", "Espectáculo", "🎭", 60, "Un musical en el distrito teatral más famoso de Europa."),
@@ -363,8 +363,8 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Sintra", "Excursión", "🚌", 35, "Palacios de cuento a 30 minutos de Lisboa."),
     ],
     "ATH": [
-        ("Acrópolis y Partenón", "Sitio histórico", "🏰", 20, "La colina sagrada de Atenas y el templo más famoso de la antigua Grecia."),
-        ("Museo de la Acrópolis", "Museo", "🏛️", 10, "Esculturas y tesoros encontrados en la Acrópolis."),
+        ("Acrópolis y Partenón", "Sitio histórico", "🏰", 22, "La colina sagrada de Atenas y el templo más famoso de la antigua Grecia."),
+        ("Museo de la Acrópolis", "Museo", "🏛️", 11, "Esculturas y tesoros encontrados en la Acrópolis."),
         ("Barrio de Plaka", "Tour guiado", "🚶", 0, "Calles adoquinadas bajo la Acrópolis con tavernas y tiendas."),
         ("Monastiraki", "Atracción", "📍", 0, "Plaza de mercado de pulgas con vistas a la Acrópolis."),
         ("Paseo en barco por el Golfo Sarónico", "Paseo en barco", "🛥️", 40, "Excursión marítima a islas cercanas como Egina o Hydra."),
@@ -416,7 +416,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Marina Bay Sands y Gardens by the Bay", "Parque / Naturaleza", "🌳", 0, "Supertrees, invernaderos futuristas y espectáculo de luces."),
         ("Sentosa y Universal Studios", "Parque de atracciones", "🎢", 80, "Isla de entretenimiento con playas y parque temático."),
         ("Chinatown y Templo de la Reliquia del Diente", "Templo / Iglesia", "⛪", 0, "Barrio histórico chino con templos y mercados."),
-        ("Singapore Zoo", "Parque / Naturaleza", "🌳", 40, "Zoológico de fama mundial con recintos abiertos y safaris nocturnos."),
+        ("Singapore Zoo", "Parque / Naturaleza", "🌳", 38, "Zoológico de fama mundial con recintos abiertos y safaris nocturnos."),
         ("Hawker centers", "Tour gastronómico", "🍷", 10, "Centros de comida callejera: laksa, chili crab y chicken rice."),
     ],
     "HKG": [
@@ -434,7 +434,7 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Palm Jumeirah y Atlantis", "Atracción", "📍", 0, "La palma artificial con hoteles, playas y acuario."),
     ],
     "DEL": [
-        ("Taj Mahal", "Excursión", "🚌", 20, "La joya del arte mogol en Agra, a día completo desde Delhi."),
+        ("Taj Mahal", "Excursión", "🚌", 15, "La joya del arte mogol en Agra, a día completo desde Delhi."),
         ("Fuerte Rojo", "Sitio histórico", "🏰", 8, "Imponente fortaleza de arenisca roja de la dinastía mogol."),
         ("Qutub Minar", "Sitio histórico", "🏰", 10, "El minarete de ladrillo más alto del mundo."),
         ("Humayun's Tomb", "Sitio histórico", "🏰", 5, "Tumba inspiración del Taj Mahal y jardines persas."),
@@ -470,14 +470,14 @@ ACTIVIDADES_CURADAS: dict[str, list[tuple[str, str, str, float, str]]] = {
         ("Tour de cafés y brunch", "Tour gastronómico", "🍷", 30, "Cultura cafetera de Melbourne: flat white y avo toast."),
     ],
     "AKL": [
-        ("Sky Tower", "Mirador", "🌄", 25, "Vistas de Auckland y los volcanes desde la torre más alta del hemisferio sur."),
+        ("Sky Tower", "Mirador", "🌄", 28, "Vistas de Auckland y los volcanes desde la torre más alta del hemisferio sur."),
         ("Waiheke Island", "Excursión", "⛴️", 45, "Isla de viñedos, playas y arte a 40 minutos en ferry."),
-        ("Waitomo Glowworm Caves", "Excursión", "🚌", 90, "Cavernas con gusanos luminiscentes en paseo en bote."),
+        ("Waitomo Glowworm Caves", "Excursión", "🚌", 80, "Cavernas con gusanos luminiscentes en paseo en bote."),
         ("Mount Eden", "Mirador", "🌄", 0, "Cráter volcánico con vista panorámica del centro de Auckland."),
         ("Viaduct Harbour", "Paseo en barco", "🛥️", 30, "Puerto moderno con restaurantes, yates y paseos marítimos."),
     ],
     "CPT": [
-        ("Table Mountain", "Mirador", "🌄", 25, "Subida en teleférico a la montaña plana con vistas de Ciudad del Cabo."),
+        ("Table Mountain", "Mirador", "🌄", 20, "Subida en teleférico a la montaña plana con vistas de Ciudad del Cabo."),
         ("Cabo de Buena Esperanza", "Excursión", "🚌", 80, "Reserva natural y punto más suroccidental de África."),
         ("V&A Waterfront", "Atracción", "📍", 0, "Puerto histórico con tiendas, restaurantes y vistas de Table Mountain."),
         ("Boulders Beach", "Playa", "🏖️", 10, "Playa con colonia de pingüinos africanos."),
@@ -558,26 +558,38 @@ def _normalizar(texto: str) -> str:
     return sin_acentos.strip().lower()
 
 
-def _links_afiliado(nombre: str, ciudad: str) -> dict:
+# Stop-words funcionales para la deduplicación de nombres de actividades.
+# No incluimos sustantivos ni adjetivos: solo normalizamos orden, artículos
+# y preposiciones.
+_STOP_WORDS_DEDUP: set[str] = {
+    # español
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del",
+    "al", "a", "y", "o", "e", "u", "con", "por", "para", "en", "sobre",
+    "bajo", "entre", "hacia", "desde", "hasta", "sin", "ante", "tras",
+    "que", "cual", "cuales", "cuando", "donde", "como",
+    # inglés
+    "the", "a", "an", "and", "or", "of", "in", "on", "at", "to", "for",
+    "with", "by", "from", "into", "onto", "about", "over", "under",
+    "between", "among", "without", "through", "during", "before", "after",
+    # portugués (destinos brasileños)
+    "os", "as", "um", "uma", "uns", "umas", "da", "do", "das", "dos",
+    "em", "no", "na", "nos", "nas", "pelo", "pela", "pelos", "pelas",
+}
+
+
+def _normalizar_nombre_actividad(nombre: str) -> str:
     """
-    Links de afiliado Klook/KKday que buscan la actividad por nombre.
+    Key canónica para deduplicar nombres que difieren sólo en orden de
+    palabras, artículos, preposiciones o acentos.
 
-    Usamos el patrón `?u=<url_de_busqueda>` sobre los redirects de afiliado
-    (similar a Travelpayouts), de modo que el usuario llegue a una página de
-    resultados de la actividad concreta, no al homepage de la plataforma.
+    Ejemplo: "JK Memorial" y "Memorial JK" producen la misma key.
     """
-    query = quote(nombre.strip())
-
-    base_klook = f"https://www.klook.com/search/?keyword={query}"
-    link_klook = f"https://klook.tpo.li/GBfSCVf0?u={quote(base_klook)}"
-
-    base_kkday = f"https://www.kkday.com/en/search?keyword={query}"
-    link_kkday = f"https://kkday.tpo.li/zHk5IFqZ?u={quote(base_kkday)}"
-
-    return {
-        "link_klook": link_klook,
-        "link_kkday": link_kkday,
-    }
+    if not nombre:
+        return ""
+    texto = _normalizar(nombre)
+    tokens = {t.strip() for t in re.split(r"[^a-z0-9]+", texto) if t.strip()}
+    tokens = tokens - _STOP_WORDS_DEDUP
+    return " ".join(sorted(tokens))
 
 
 def _clasificar_kinds(kinds: str) -> tuple[str, str, float]:
@@ -604,7 +616,7 @@ def _armar_actividad(
     ciudad: str,
     fuente: str,
 ) -> dict:
-    """Construye el dict plano de una actividad con precio, links y descripción."""
+    """Construye el dict plano de una actividad con precio y descripción."""
     return {
         "nombre":          nombre,
         "categoria":       categoria,
@@ -614,7 +626,6 @@ def _armar_actividad(
         "gratis":          precio == 0,
         "moneda":          "USD",
         "fuente":          fuente,
-        **_links_afiliado(nombre, ciudad),
     }
 
 
@@ -779,25 +790,29 @@ def _fusionar_actividades(
 ) -> list[dict]:
     """
     Combina actividades curadas (prioridad) con actividades reales de OpenTripMap,
-    evitando duplicados por nombre. Mantiene el orden de cada lista.
+    evitando duplicados por nombre.  La comparación usa una key canónica que
+    ignora orden, artículos y preposiciones, por lo que "JK Memorial" y
+    "Memorial JK" se reconocen como el mismo lugar.
     """
     vistos: set[str] = set()
     resultado: list[dict] = []
 
     for act in curadas:
-        nombre = act.get("nombre", "").strip().lower()
-        if not nombre or nombre in vistos:
+        nombre = act.get("nombre", "").strip()
+        key = _normalizar_nombre_actividad(nombre)
+        if not key or key in vistos:
             continue
-        vistos.add(nombre)
+        vistos.add(key)
         resultado.append(act)
         if len(resultado) >= limite:
             return resultado
 
     for act in reales:
-        nombre = act.get("nombre", "").strip().lower()
-        if not nombre or nombre in vistos:
+        nombre = act.get("nombre", "").strip()
+        key = _normalizar_nombre_actividad(nombre)
+        if not key or key in vistos:
             continue
-        vistos.add(nombre)
+        vistos.add(key)
         resultado.append(act)
         if len(resultado) >= limite:
             return resultado
@@ -805,7 +820,7 @@ def _fusionar_actividades(
     return resultado
 
 
-def _actividades_curadas(
+async def _actividades_curadas(
     ciudad: str,
     iata: str | None,
     limite: int,
@@ -824,11 +839,19 @@ def _actividades_curadas(
         key = _IATA_POR_CIUDAD.get(_normalizar(ciudad), "")
         entradas = ACTIVIDADES_CURADAS.get(key, ACTIVIDADES_CURADAS["_default"])
 
+    # Imagen específica de cada actividad vía Wikipedia (gratuito y confiable)
+    fotos_wiki = await asyncio.gather(*(
+        _foto_wikipedia_por_nombre(nombre, ciudad) for nombre, *_ in entradas
+    ))
+
     actividades: list[dict] = []
     fotos = fotos_pexels or []
     for i, (nombre, categoria, icono, precio, descripcion) in enumerate(entradas):
         act = _armar_actividad(nombre, categoria, icono, precio, descripcion, ciudad, fuente="curado")
-        act["foto_url"] = fotos[i % len(fotos)] if fotos else ""
+        foto_url = fotos_wiki[i]
+        if not foto_url and fotos:
+            foto_url = fotos[i % len(fotos)]
+        act["foto_url"] = foto_url
         actividades.append(act)
 
     actividades = _boost_por_contexto(
@@ -1078,6 +1101,11 @@ def _url_imagen_confiable(url: str) -> str:
     if "opentripmap.org/catalog" in lowered or "otmap.org/catalog" in lowered:
         return ""
 
+    # OpenTripMap suele devolver páginas de Commons (commons.wikimedia.org/wiki/File:...)
+    # en vez de la imagen directa; las rechazamos para forzar el fallback a la API REST.
+    if "wikimedia.org/wiki/file:" in lowered:
+        return ""
+
     try:
         host = urlparse(url).hostname or ""
     except Exception:
@@ -1096,6 +1124,124 @@ def _url_imagen_confiable(url: str) -> str:
     return ""
 
 
+# Endpoints de Wikimedia para obtener imágenes de puntos de interés.
+# Son gratuitos, no requieren API key y suelen tener fotos de buena calidad
+# de hitos turísticos que OpenTripMap no cubre.
+_WIKIPEDIA_SUMMARY_URL = "https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}"
+_WIKIPEDIA_SEARCH_URL = "https://es.wikipedia.org/w/rest.php/v1/search/page"
+_TTL_WIKIMEDIA = 30 * 24 * 3600
+
+
+def _extraer_titulo_wikipedia(url: str) -> str:
+    """Extrae el título de página desde una URL de Wikipedia."""
+    try:
+        path = urlparse(url).path or ""
+        if "/wiki/" not in path:
+            return ""
+        title = path.split("/wiki/", 1)[-1]
+        title = unquote(title.replace("_", " "))
+        return title.strip()
+    except Exception:
+        return ""
+
+
+async def _foto_wikipedia_por_url(url: str) -> str:
+    """
+    Dada una URL de Wikipedia, devuelve la URL de la imagen principal del
+    artículo usando la API REST de Wikimedia. Prueba primero en español y,
+    si no existe, en inglés.
+    """
+    title = _extraer_titulo_wikipedia(url)
+    if not title:
+        return ""
+
+    cache_key = f"wikimedia:title:v2:{_normalizar(title)}"
+    cached = cache_get(cache_key)
+    if cached and isinstance(cached, str):
+        return cached
+
+    for lang in ("es", "en"):
+        try:
+            endpoint = _WIKIPEDIA_SUMMARY_URL.format(lang=lang, title=quote(title))
+            resp = await request_with_retry(
+                "GET", endpoint,
+                provider="wikimedia",
+                max_retries=1,
+                headers={"User-Agent": "RushTrip/1.0 (actividades@rushtrip.example)"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                image_url = data.get("originalimage", {}).get("source") or ""
+                if image_url:
+                    image_url = _url_imagen_confiable(image_url)
+                    if image_url:
+                        cache_set(cache_key, image_url, provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+                        return image_url
+        except Exception as e:
+            logger.debug(f"No se pudo obtener imagen de Wikipedia ({lang}) para '{title}': {e}")
+
+    cache_set(cache_key, "", provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+    return ""
+
+
+async def _foto_wikipedia_por_nombre(nombre: str, ciudad: str) -> str:
+    """
+    Busca una imagen en Wikipedia para una actividad curada (sin xid)
+    usando el nombre de la actividad + ciudad.
+    """
+    if not nombre:
+        return ""
+
+    query = f"{nombre.strip()} {ciudad.strip()}".strip()
+    cache_key = f"wikimedia:search:v3:{_normalizar(query)}"
+    cached = cache_get(cache_key)
+    if cached and isinstance(cached, str):
+        return cached
+
+    try:
+        resp = await request_with_retry(
+            "GET", _WIKIPEDIA_SEARCH_URL,
+            provider="wikimedia",
+            max_retries=1,
+            headers={"User-Agent": "RushTrip/1.0 (actividades@rushtrip.example)"},
+            params={"q": query, "limit": 1},
+        )
+        if resp.status_code != 200:
+            cache_set(cache_key, "", provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+            return ""
+
+        data = resp.json()
+        pages = data.get("pages") or []
+        if not pages:
+            cache_set(cache_key, "", provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+            return ""
+
+        page_key = pages[0].get("key", "")
+        if page_key:
+            # Intentar la imagen principal del artículo (mayor resolución que el thumbnail)
+            image_url = await _foto_wikipedia_por_url(
+                f"https://es.wikipedia.org/wiki/{quote(page_key)}"
+            )
+            if image_url:
+                cache_set(cache_key, image_url, provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+                return image_url
+
+        # Fallback al thumbnail de búsqueda (resolución pequeña)
+        thumbnail = pages[0].get("thumbnail") or {}
+        image_url = thumbnail.get("url", "")
+        if image_url.startswith("//"):
+            image_url = f"https:{image_url}"
+        elif image_url and not image_url.startswith(("http://", "https://")):
+            image_url = f"https://es.wikipedia.org{image_url}"
+
+        image_url = _url_imagen_confiable(image_url)
+        cache_set(cache_key, image_url or "", provider="wikimedia", ttl_seconds=_TTL_WIKIMEDIA)
+        return image_url or ""
+    except Exception as e:
+        logger.debug(f"No se pudo buscar imagen de Wikipedia para '{query}': {e}")
+        return ""
+
+
 async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
     """
     Consulta el detalle de un POI por su XID y devuelve un dict con
@@ -1107,13 +1253,13 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
       3. Si aún así llega un texto que no parece español, _traducir_descripciones
          se encargará de traducirlo o reemplazarlo por plantilla en español.
 
-    La foto se valida contra hosts confiables para evitar URLs rotas de
-    media.opentripmap.org/catalog.
+    La foto se valida contra hosts confiables. Si OpenTripMap no aporta una
+    imagen útil, intentamos obtenerla desde el artículo de Wikipedia vinculado.
     """
     if not xid:
         return {"descripcion": "", "foto_url": ""}
 
-    cache_key = f"opentripmap:xid:{xid}"
+    cache_key = f"opentripmap:xid:v3:{xid}"
     cached = cache_get(cache_key)
     if cached and isinstance(cached, dict):
         return cached
@@ -1123,14 +1269,33 @@ async def _enriquecer_poi_opentripmap(xid: str, ciudad: str) -> dict:
         data = await _detalle_poi_opentripmap(xid, language="es")
         descripcion = _extraer_descripcion_poi(data)
 
-        # 2) Fallback a inglés si no hubo descripción
-        if not descripcion:
-            data = await _detalle_poi_opentripmap(xid, language="en")
-            descripcion = _extraer_descripcion_poi(data)
+        def _extraer_foto_url(d: dict) -> str:
+            for candidato in (
+                d.get("preview", {}).get("source", ""),
+                d.get("image", ""),
+            ):
+                url = _url_imagen_confiable(candidato)
+                if url:
+                    return url
+            return ""
 
-        foto_url = _url_imagen_confiable(
-            data.get("image") or data.get("preview", {}).get("source") or ""
-        )
+        foto_url = _extraer_foto_url(data)
+
+        # 2) Fallback a inglés si falta descripción o foto (el detalle en inglés
+        #    suele tener más contenido multimedia para hitos no hispanos).
+        if not descripcion or not foto_url:
+            data_en = await _detalle_poi_opentripmap(xid, language="en")
+            if not descripcion:
+                descripcion = _extraer_descripcion_poi(data_en)
+            if not foto_url:
+                foto_url = _extraer_foto_url(data_en)
+
+        # 3) Si OpenTripMap no aporta foto directa, usamos la imagen del
+        #    artículo de Wikipedia vinculado.
+        if not foto_url:
+            wiki_url = data.get("wikipedia") or data_en.get("wikipedia", "")
+            if wiki_url:
+                foto_url = await _foto_wikipedia_por_url(wiki_url)
 
         resultado = {"descripcion": descripcion, "foto_url": foto_url or ""}
         cache_set(cache_key, resultado, provider="opentripmap", ttl_seconds=_TTL_DETALLE)
@@ -1188,38 +1353,56 @@ async def _consultar_opentripmap(
             status_code=resp.status_code,
         )
 
-    # 1) POIs base ordenados por relevancia, sin duplicados
-    pois_base = []
-    vistos: set[str] = set()
-    for poi in sorted(resp.json(), key=lambda p: p.get("rate", 0), reverse=True):
-        nombre = (poi.get("name") or "").strip()
-        if not nombre or nombre.lower() in vistos:
-            continue
-        vistos.add(nombre.lower())
-        pois_base.append(poi)
-        if len(pois_base) >= limite:
-            break
+    # 1) POIs base ordenados por relevancia (sin dedup todavía).
+    #    Enriquecemos todos para poder elegir, entre duplicados, el que tenga
+    #    mejor imagen (p. ej. "JK Memorial" vs "Memorial JK").
+    pois_raw = sorted(resp.json(), key=lambda p: p.get("rate", 0), reverse=True)[: limite * 4]
 
-    if not pois_base:
+    if not pois_raw:
         return []
 
     # 2) Enriquecer detalles en paralelo
-    detalles = await asyncio.gather(*(
+    detalles_raw = await asyncio.gather(*(
         _enriquecer_poi_opentripmap(poi.get("xid", ""), ciudad)
-        for poi in pois_base
+        for poi in pois_raw
     ))
 
-    # 3) Traducir descripciones reales al español (si hay DeepL key)
+    # 3) Dedup por nombre canónico. Si hay duplicados, nos quedamos con el que
+    #    tenga foto; en empate, conservamos el primero (mayor relevancia).
+    elegidos: dict[str, tuple[dict, dict]] = {}
+    orden_keys: list[str] = []
+    for poi, detalle in zip(pois_raw, detalles_raw):
+        nombre = (poi.get("name") or "").strip()
+        key = _normalizar_nombre_actividad(nombre)
+        if not key:
+            continue
+        if key in elegidos:
+            _, detalle_existente = elegidos[key]
+            if detalle.get("foto_url") and not detalle_existente.get("foto_url"):
+                elegidos[key] = (poi, detalle)
+        else:
+            elegidos[key] = (poi, detalle)
+            orden_keys.append(key)
+        if len(orden_keys) >= limite:
+            break
+
+    if not orden_keys:
+        return []
+
+    pois_base = [elegidos[k][0] for k in orden_keys]
+    detalles = [elegidos[k][1] for k in orden_keys]
+
+    # 4) Traducir descripciones reales al español (si hay DeepL key)
     textos_originales = [d.get("descripcion", "") for d in detalles]
     categorias = [_clasificar_kinds(poi.get("kinds", ""))[0] for poi in pois_base]
     textos_traducidos = await _traducir_descripciones(
         textos_originales, categorias=categorias, ciudades=[ciudad] * len(pois_base)
     )
 
-    # 4) Fotos de fallback (proporcionadas por el caller para evitar doble llamada)
+    # 5) Fotos de fallback (proporcionadas por el caller para evitar doble llamada)
     fotos_pexels = fotos_pexels or []
 
-    # 5) Armar actividades con descripción enriquecida + foto
+    # 6) Armar actividades con descripción enriquecida + foto
     actividades: list[dict] = []
     for i, poi in enumerate(pois_base):
         nombre = (poi.get("name") or "").strip()
@@ -1278,9 +1461,10 @@ async def obtener_actividades(
     lluvia_bucket = _bucket_lluvia(clima)
     pax_bucket = _bucket_pasajeros(pasajeros)
     # Cache key separada por contexto discretizado para no mezclar recomendaciones
-    # de distintos perfiles de viaje.
+    # de distintos perfiles de viaje.  Versión 4 invalida resultados previos tras
+    # cambios en imágenes, precios y eliminación de links de afiliado.
     cache_key = (
-        f"actividades:{ciudad_limpia.lower()}:{limite}:"
+        f"actividades:v4:{ciudad_limpia.lower()}:{limite}:"
         f"{tier.lower()}:{lluvia_bucket}:{pax_bucket}"
     )
 
@@ -1309,12 +1493,12 @@ async def obtener_actividades(
                         # curado primero (calidad garantizada en español), reales
                         # para rellenar sin duplicar.
                         if _tiene_curado(iata, ciudad_limpia):
-                            curado = _actividades_curadas(
+                            curado = (await _actividades_curadas(
                                 ciudad_limpia, iata, limite,
                                 tier=tier, fecha_salida=fecha_salida,
                                 fecha_regreso=fecha_regreso, clima=clima,
                                 pasajeros=pasajeros, fotos_pexels=fotos_pexels,
-                            )["actividades"]
+                            ))["actividades"]
                             actividades = _fusionar_actividades(
                                 curado, actividades_reales, limite
                             )
@@ -1339,7 +1523,7 @@ async def obtener_actividades(
     except Exception as e:
         logger.warning(f"Error obteniendo actividades para '{ciudad_limpia}': {e}")
 
-    return _actividades_curadas(
+    return await _actividades_curadas(
         ciudad_limpia, iata, limite,
         tier=tier, fecha_salida=fecha_salida, fecha_regreso=fecha_regreso,
         clima=clima, pasajeros=pasajeros, fotos_pexels=fotos_pexels,
